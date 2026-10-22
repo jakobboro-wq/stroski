@@ -1,0 +1,12 @@
+# Osebni podatki nikoli ne gredo na GitHub (repozitorij je javen)
+*.xlsx
+*.xls
+*.csv
+*.json
+!manifest.webmanifest
+*.pdf
+*.docx
+
+# Lokalne nastavitve
+.claude/
+node_modules/

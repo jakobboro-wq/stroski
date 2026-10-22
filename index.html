@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="sl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Stroški</title>
+  <meta name="description" content="Sledenje osebnim stroškom">
+  <meta name="theme-color" content="#f3f3f0" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Stroški">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <nav class="nav" aria-label="Glavni meni">
+      <div class="brand"><img src="icons/icon.svg" alt="" width="28" height="28"> Stroški</div>
+      <a href="#/pregled" data-route="pregled">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+        <span>Pregled</span>
+      </a>
+      <a href="#/transakcije" data-route="transakcije">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+        <span>Transakcije</span>
+      </a>
+      <button class="fab" id="addBtn" aria-label="Dodaj strošek">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        <span class="fab-label">Dodaj strošek</span>
+      </button>
+      <a href="#/uvoz" data-route="uvoz">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></svg>
+        <span>Uvoz</span>
+      </a>
+      <a href="#/nastavitve" data-route="nastavitve">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+        <span>Nastavitve</span>
+      </a>
+    </nav>
+    <main id="view"></main>
+  </div>
+
+  <dialog id="txDialog" class="sheet">
+    <form id="txForm" novalidate>
+      <header class="sheet-head">
+        <h2 id="txTitle">Nov strošek</h2>
+        <button type="button" class="icon-btn" id="txClose" aria-label="Zapri">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </header>
+      <div class="sheet-body">
+        <div class="seg" role="radiogroup" aria-label="Vrsta">
+          <label><input type="radio" name="kind" value="expense" checked><span>Strošek</span></label>
+          <label><input type="radio" name="kind" value="income"><span>Prihodek</span></label>
+          <label><input type="radio" name="kind" value="transfer"><span>Prenos</span></label>
+        </div>
+        <label class="amount-field">
+          <input name="amount" inputmode="decimal" placeholder="0,00" autocomplete="off" aria-label="Znesek">
+          <span id="txCurrency">€</span>
+        </label>
+        <div class="cat-grid" id="catGrid" role="radiogroup" aria-label="Kategorija"></div>
+        <label class="field">Opis
+          <input name="description" placeholder="npr. Mercator, kosilo, kino" autocomplete="off">
+        </label>
+        <div class="row2">
+          <label class="field">Datum<input type="date" name="date"></label>
+          <label class="field">Račun<input name="account" list="accountList" autocomplete="off"></label>
+        </div>
+        <datalist id="accountList"></datalist>
+      </div>
+      <footer class="sheet-foot">
+        <button type="button" class="btn danger ghost" id="txDelete" hidden>Izbriši</button>
+        <button type="submit" class="btn primary">Shrani</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="askDialog" class="ask">
+    <form method="dialog">
+      <p></p>
+      <div class="ask-actions">
+        <button value="no" class="btn">Prekliči</button>
+        <button value="yes" class="btn primary">Da</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
