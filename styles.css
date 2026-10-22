@@ -376,6 +376,14 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 @media (min-width: 900px) { .sticky-actions { bottom: 0; padding-bottom: 4px; } }
 .error { color: var(--bad); }
 
+/* ---------- Sinhronizacija ---------- */
+.sync-form { display: grid; gap: 12px; max-width: 420px; }
+.form-error { color: var(--bad); font-size: 14px; margin: 8px 0; }
+.sync-line { font-weight: 600; margin: 0 0 4px; }
+.sync-line.idle { color: var(--good); }
+.sync-line.error { color: var(--bad); }
+.btn:disabled { opacity: 0.55; cursor: default; }
+
 /* ---------- Nastavitve ---------- */
 .cat-edit-list { display: grid; gap: 6px; margin-bottom: 12px; }
 .cat-edit, .add-row { display: flex; align-items: center; gap: 8px; }

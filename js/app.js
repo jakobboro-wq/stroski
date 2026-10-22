@@ -1,6 +1,7 @@
 import { load } from './store.js';
 import { openTxDialog } from './dialog.js';
 import { hideTip } from './ui.js';
+import { initSync } from './sync.js';
 import { renderOverview } from './views/overview.js';
 import { renderTransactions } from './views/transactions.js';
 import { renderImport } from './views/import.js';
@@ -34,5 +35,6 @@ document.addEventListener('data-changed', render);
 
 await load();
 render();
+initSync();
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');

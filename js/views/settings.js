@@ -1,6 +1,7 @@
 import { state, category, saveCategory, deleteCategory, addRule, deleteRule, exportData, importData, clearAll, deleteTransactions } from '../store.js';
 import { PROTECTED_CATEGORIES, builtinRules } from '../categorize.js';
 import { loadDemo } from '../demo.js';
+import { renderSyncCard } from './sync-card.js';
 import { esc, ask, toast, download, todayISO, plural, TX_FORMS, icons } from '../ui.js';
 
 const KIND_LABEL = { expense: 'strošek', income: 'prihodek', transfer: 'prenos' };
@@ -17,6 +18,7 @@ export function renderSettings(view) {
 
   view.innerHTML = `
     <header class="page-head"><h1>Nastavitve</h1></header>
+    <section class="card" id="syncCard"></section>
 
     <section class="card">
       <h2>Kategorije</h2>
@@ -57,7 +59,7 @@ export function renderSettings(view) {
 
     <section class="card">
       <h2>Podatki</h2>
-      <p class="muted small">Podatki so zaenkrat shranjeni samo v tem brskalniku na tej napravi. Občasno naredi varnostno kopijo (lahko jo shraniš na OneDrive ali Google Drive).</p>
+      <p class="muted small">Podatki so shranjeni v brskalniku na tej napravi (in šifrirani v oblaku, če je sinhronizacija vklopljena). Varnostna kopija je datoteka, ki jo lahko shraniš kamorkoli (npr. na OneDrive).</p>
       <div class="button-row">
         <button class="btn" id="exportBtn">Izvozi varnostno kopijo</button>
         <label class="btn">Obnovi iz kopije<input type="file" id="restoreFile" accept=".json,application/json" hidden></label>
@@ -67,6 +69,8 @@ export function renderSettings(view) {
         <button class="btn danger" id="wipeBtn">Izbriši vse podatke</button>
       </div>
     </section>`;
+
+  renderSyncCard(view.querySelector('#syncCard'));
 
   // Kategorije: shranjevanje ob spremembi, brez ponovnega izrisa
   view.querySelectorAll('.cat-edit').forEach(row => {
