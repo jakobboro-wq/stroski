@@ -376,6 +376,51 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 @media (min-width: 900px) { .sticky-actions { bottom: 0; padding-bottom: 4px; } }
 .error { color: var(--bad); }
 
+/* ---------- Podkategorije ---------- */
+.cat-group { display: grid; gap: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.cat-group:last-child { border-bottom: 0; }
+.cat-edit.sub, .add-row.sub { padding-left: 28px; position: relative; }
+.cat-edit.sub::before { content: "↳"; position: absolute; left: 8px; color: var(--muted); }
+.add-row.sub { border-top: 0; padding-top: 0; }
+.add-sub {
+  justify-self: start;
+  margin-left: 28px;
+  padding: 4px 10px;
+  border: 1px dashed var(--axis);
+  border-radius: 8px;
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.add-sub:hover { border-color: var(--accent); color: var(--accent-ink); }
+.sub-pills { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 2px; }
+.sub-pills a {
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.sub-pills a:hover { color: var(--ink); }
+.sub-pills b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.cat-row { cursor: pointer; }
+.cat-top { color: inherit; text-decoration: none; }
+.chip-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.chip-grid.small { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
+.chip-grid.small .chip span { padding: 6px 4px; font-size: 11px; }
+.chip-grid.small .chip b { font-size: 16px; }
+.chip.add { padding: 0; border: 0; background: none; font: inherit; cursor: pointer; }
+.chip.add span { border: 1.5px dashed var(--axis); background: none; }
+.chip.add:hover span { border-color: var(--accent); color: var(--accent-ink); }
+.sub-picker { margin-top: 10px; padding: 10px; border-radius: 12px; background: var(--bg); display: grid; gap: 8px; }
+.sub-label { font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.new-cat { display: flex; gap: 6px; margin-top: 8px; }
+.new-cat .new-name { flex: 1; min-width: 0; }
+
 /* ---------- Sinhronizacija ---------- */
 .sync-form { display: grid; gap: 12px; max-width: 420px; }
 .form-error { color: var(--bad); font-size: 14px; margin: 8px 0; }
@@ -445,7 +490,7 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 }
 .amount-field input:focus { border-bottom-color: var(--accent); }
 .amount-field span { font-size: 28px; color: var(--muted); }
-.cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.cat-grid { display: block; }
 .chip input { position: absolute; opacity: 0; pointer-events: none; }
 .chip span {
   display: grid;

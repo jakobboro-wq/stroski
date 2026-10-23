@@ -1,6 +1,6 @@
 // Okno za dodajanje in urejanje transakcije.
 
-import { state, category, kindOf, accounts, saveTransactions, deleteTransactions, addRule, BASE_CURRENCY } from './store.js';
+import { state, category, kindOf, topOf, childrenOf, topCategories, categoryLabel, accounts, saveCategory, saveTransactions, deleteTransactions, addRule, BASE_CURRENCY } from './store.js';
 import { FALLBACK_CATEGORY, normalize } from './categorize.js';
 import { parseNumber } from './csv.js';
 import { esc, todayISO, ask, toast, plural, TX_FORMS } from './ui.js';
@@ -12,11 +12,69 @@ let editing = null;
 
 const TITLES = { expense: 'strošek', income: 'prihodek', transfer: 'prenos' };
 
+const grid = document.getElementById('catGrid');
+
+const chip = (name, c, checked, label = c.name, emoji = c.emoji) =>
+  `<label class="chip"><input type="radio" name="${name}" value="${esc(c.id)}"${checked ? ' checked' : ''}><span><b>${esc(emoji)}</b>${esc(label)}</span></label>`;
+const addChip = (mode, label) => `<button type="button" class="chip add" data-add="${mode}"><span><b>＋</b>${label}</span></button>`;
+const newCatForm = `
+  <div class="new-cat" hidden>
+    <input class="emoji-in" value="🏷️" maxlength="8" aria-label="Ikona">
+    <input class="new-name" placeholder="Ime" aria-label="Ime nove kategorije" autocomplete="off">
+    <button type="button" class="btn primary new-save">Dodaj</button>
+  </div>`;
+
+/** Dve ravni: glavne kategorije, pod izbrano pa njene podkategorije. Obe ravni lahko dopolniš sproti. */
 function renderCategories(kind, selected) {
-  document.getElementById('catGrid').innerHTML = state.categories
-    .filter(c => c.kind === kind)
-    .map(c => `<label class="chip"><input type="radio" name="category" value="${esc(c.id)}"${c.id === selected ? ' checked' : ''}><span><b>${esc(c.emoji)}</b>${esc(c.name)}</span></label>`)
-    .join('');
+  const selTop = selected ? topOf(selected) : null;
+  const top = selTop && category(selTop);
+  const subs = selTop ? childrenOf(selTop) : [];
+  grid.innerHTML = `
+    <div class="chip-grid">
+      ${topCategories(kind).map(c => chip('topCat', c, c.id === selTop)).join('')}
+      ${addChip('top', 'Nova')}
+    </div>
+    ${selTop ? '' : newCatForm}
+    ${top ? `
+      <div class="sub-picker">
+        <div class="sub-label">Podkategorija v »${esc(top.name)}«</div>
+        <div class="chip-grid small">
+          ${chip('category', top, selected === selTop, 'Brez', '—')}
+          ${subs.map(c => chip('category', c, c.id === selected)).join('')}
+          ${addChip('sub', 'Nova')}
+        </div>
+        ${newCatForm}
+      </div>` : ''}`;
+}
+
+grid.addEventListener('change', e => {
+  if (e.target.name === 'topCat') renderCategories(f.kind.value, e.target.value);
+});
+grid.addEventListener('click', e => {
+  const add = e.target.closest('[data-add]');
+  if (add) {
+    const box = add.closest('.chip-grid').nextElementSibling;
+    box.dataset.mode = add.dataset.add;
+    box.hidden = false;
+    box.querySelector('.new-name').focus();
+  }
+  if (e.target.closest('.new-save')) createCategory(e.target.closest('.new-cat'));
+});
+grid.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.closest('.new-cat')) {
+    e.preventDefault(); // ne pošlji celega obrazca
+    createCategory(e.target.closest('.new-cat'));
+  }
+});
+
+async function createCategory(box) {
+  const name = box.querySelector('.new-name').value.trim();
+  if (!name) return box.querySelector('.new-name').focus();
+  const emoji = box.querySelector('.emoji-in').value.trim() || '🏷️';
+  const parentId = box.dataset.mode === 'sub' ? grid.querySelector('input[name=topCat]:checked')?.value : null;
+  const c = await saveCategory({ name, emoji, kind: f.kind.value, parentId });
+  renderCategories(f.kind.value, c.id);
+  toast(`${parentId ? 'Podkategorija' : 'Kategorija'} »${name}« dodana`);
 }
 
 function setTitle() {
@@ -65,7 +123,9 @@ form.addEventListener('submit', async e => {
     return;
   }
   const kind = f.kind.value;
-  const categoryId = form.querySelector('input[name=category]:checked')?.value ?? FALLBACK_CATEGORY[kind];
+  const categoryId = form.querySelector('input[name=category]:checked')?.value
+    ?? form.querySelector('input[name=topCat]:checked')?.value
+    ?? FALLBACK_CATEGORY[kind];
   // Predznak: strošek je negativen, prihodek pozitiven. Pri urejanju ohranimo predznak (npr. vračilo v kategoriji stroška).
   let sign = kind === 'income' ? 1 : -1;
   if (editing && kindOf(editing.categoryId) === kind) sign = Math.sign(editing.amount) || sign;
@@ -89,7 +149,7 @@ form.addEventListener('submit', async e => {
     const key = normalize(tx.description);
     const others = state.transactions.filter(t => t.id !== tx.id && t.categorySource !== 'manual' && t.categoryId !== categoryId && normalize(t.description) === key).length;
     const extra = others ? ` Spremenilo bo tudi ${plural(others, ['obstoječo transakcijo', 'obstoječi transakciji', 'obstoječe transakcije', 'obstoječih transakcij'])}.` : '';
-    const ok = await ask(`Naj »${tx.description}« vedno uvrstim v ${c.emoji} ${c.name}?${extra}`, { yes: 'Da, vedno', no: 'Samo to' });
+    const ok = await ask(`Naj »${tx.description}« vedno uvrstim v ${c.emoji} ${categoryLabel(categoryId)}?${extra}`, { yes: 'Da, vedno', no: 'Samo to' });
     if (ok) {
       const n = await addRule(tx.description, categoryId);
       toast(n ? `Pravilo shranjeno, posodobljeno: ${plural(n, TX_FORMS)}` : 'Pravilo shranjeno');

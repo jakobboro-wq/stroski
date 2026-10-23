@@ -1,6 +1,6 @@
-import { state, category, kindOf, BASE_CURRENCY } from '../store.js';
+import { state, category, kindOf, topOf, BASE_CURRENCY } from '../store.js';
 import { normalize } from '../categorize.js';
-import { buildIndex, addMonths, average, spendOf, incomeOf, catSpendOf, daysInMonth } from '../stats.js';
+import { buildIndex, addMonths, average, spendOf, incomeOf, daysInMonth } from '../stats.js';
 import { columnChart } from '../charts.js';
 import { loadDemo } from '../demo.js';
 import { esc, money, money0, signedMoney, monthLabel, currentMonth, todayISO, plural, TX_FORMS, showTip, hideTip, icons, toast } from '../ui.js';
@@ -54,10 +54,32 @@ export function renderOverview(view, params) {
   // Napoved do konca meseca (linearno), le za tekoči mesec.
   const projection = isCurrent && today >= 3 && today < dim ? (spend / today) * dim : null;
 
-  // Kategorije
-  const catRows = [...(cur?.byCat ?? new Map()).entries()]
-    .filter(([, v]) => v > 0.004)
-    .map(([id, v]) => ({ c: category(id), v, avg: average(idx, month, catSpendOf(id)), prev: catSpendOf(id)(idx.months.get(prevKey)) }))
+  // Kategorije: seštevek po glavnih kategorijah, s podkategorijami pod njimi
+  const spendInTop = topId => e => {
+    let s = 0;
+    for (const [id, v] of e?.byCat ?? []) if (topOf(id) === topId) s += v;
+    return s;
+  };
+  const tops = new Map();
+  for (const [id, v] of cur?.byCat ?? []) {
+    const t = topOf(id);
+    const e = tops.get(t) ?? { v: 0, subs: new Map() };
+    e.v += v;
+    e.subs.set(id, (e.subs.get(id) ?? 0) + v);
+    tops.set(t, e);
+  }
+  const catRows = [...tops.entries()]
+    .filter(([, e]) => e.v > 0.004)
+    .map(([id, e]) => ({
+      c: category(id),
+      v: e.v,
+      avg: average(idx, month, spendInTop(id)),
+      prev: spendInTop(id)(idx.months.get(prevKey)),
+      // Razčlenitev pokažemo le, če je vsaj ena podkategorija (ne samo glavna kategorija)
+      subs: [...e.subs.entries()].some(([sid]) => sid !== id)
+        ? [...e.subs.entries()].filter(([, v]) => v > 0.004).sort((a, b) => b[1] - a[1]).map(([sid, v]) => ({ c: category(sid), v, isTop: sid === id }))
+        : [],
+    }))
     .sort((a, b) => b.v - a.v);
   const catMax = Math.max(1, ...catRows.map(r => Math.max(r.v, r.avg ?? 0)));
   const hasAvg = catRows.some(r => r.avg != null);
@@ -131,15 +153,17 @@ export function renderOverview(view, params) {
             // Majhne razlike (pod 10 % ali pod 10 €) niso vredne opozorila.
             if (Math.abs(d) >= 0.1 && Math.abs(r.v - r.avg) >= 10) note = ` · <span class="delta ${d > 0 ? 'bad' : 'good'}">${d > 0 ? '▲' : '▼'} ${Math.round(Math.abs(d) * 100)} % ${d > 0 ? 'nad' : 'pod'} povprečjem</span>`;
           } else if (r.avg === 0) note = ' · <span class="muted">novo ta mesec</span>';
+          const href = c => `#/transakcije?m=${month}&c=${encodeURIComponent(c.id)}`;
           return `
-            <a class="cat-row" data-i="${i}" href="#/transakcije?m=${month}&c=${encodeURIComponent(r.c.id)}">
+            <div class="cat-row" data-i="${i}" data-href="${href(r.c)}">
               <span class="emoji-badge">${esc(r.c.emoji)}</span>
               <span class="cat-main">
-                <span class="cat-top"><span class="cat-name">${esc(r.c.name)}</span><span class="cat-amt">${money(r.v)}</span></span>
+                <a class="cat-top" href="${href(r.c)}"><span class="cat-name">${esc(r.c.name)}</span><span class="cat-amt">${money(r.v)}</span></a>
                 <span class="cat-bar"><i style="width:${(r.v / catMax) * 100}%"></i>${r.avg ? `<b style="left:${(r.avg / catMax) * 100}%"></b>` : ''}</span>
                 <span class="cat-sub">${Math.round(share * 100)} % porabe${note}</span>
+                ${r.subs.length ? `<span class="sub-pills">${r.subs.map(s => `<a href="${href(s.c)}">${esc(s.isTop ? '—' : s.c.emoji)} ${esc(s.isTop ? 'brez podkategorije' : s.c.name)} <b>${money0(s.v)}</b></a>`).join('')}</span>` : ''}
               </span>
-            </a>`;
+            </div>`;
         }).join('')}</div>` : '<p class="muted">Ta mesec še ni stroškov.</p>'}
       </section>
 
@@ -170,7 +194,12 @@ export function renderOverview(view, params) {
       <div class="tip-row"><span>Ta mesec</span><b>${money(r.v)}</b></div>
       <div class="tip-row"><span>Prejšnji mesec</span><b>${money(r.prev)}</b></div>
       ${r.avg != null ? `<div class="tip-row"><span>Povprečje</span><b>${money(r.avg)}</b></div>` : ''}`;
-    el.addEventListener('pointermove', e => { if (e.pointerType === 'mouse') showTip(html, e.clientX, e.clientY); });
+    el.addEventListener('pointermove', e => {
+      if (e.pointerType !== 'mouse') return;
+      if (e.target.closest('.sub-pills')) hideTip();
+      else showTip(html, e.clientX, e.clientY);
+    });
     el.addEventListener('pointerleave', hideTip);
+    el.addEventListener('click', e => { if (!e.target.closest('a')) location.hash = el.dataset.href; });
   });
 }

@@ -2,7 +2,7 @@
 // Vsak zapis ima updatedAt, izbrisi se beležijo v tombstones — oboje potrebuje sinhronizacija.
 
 import * as db from './db.js';
-import { DEFAULT_CATEGORIES, RULES_VERSION, builtinRules, guessCategory, matchRule, normalize } from './categorize.js';
+import { DEFAULT_CATEGORIES, CATEGORIES_VERSION, OLD_DEFAULT_NAMES, RULES_VERSION, builtinRules, guessCategory, matchRule, normalize } from './categorize.js';
 import { SYNCED_STORES } from './merge.js';
 
 export const BASE_CURRENCY = 'EUR';
@@ -30,8 +30,11 @@ async function bury(store, ids) {
 export async function load() {
   let [transactions, categories, rules, meta] = await Promise.all(['transactions', 'categories', 'rules', 'meta'].map(db.getAll));
   if (!categories.length) {
+    // Nova naprava: privzete kategorije z updatedAt 0, da ob sinhronizaciji zmagajo tiste iz oblaka.
     categories = DEFAULT_CATEGORIES.map((c, order) => ({ ...c, order }));
     await db.putMany('categories', categories);
+    await db.put('meta', { key: 'categoriesVersion', value: CATEGORIES_VERSION });
+    meta.push({ key: 'categoriesVersion', value: CATEGORIES_VERSION });
   }
   state.transactions = transactions;
   state.categories = categories.sort((a, b) => a.order - b.order);
@@ -39,10 +42,45 @@ export async function load() {
   state.tombstones = { ...emptyTombstones(), ...meta.find(m => m.key === 'tombstones')?.value };
   navigator.storage?.persist?.();
 
+  if (meta.find(m => m.key === 'categoriesVersion')?.value !== CATEGORIES_VERSION) {
+    await migrateCategories();
+    await db.put('meta', { key: 'categoriesVersion', value: CATEGORIES_VERSION });
+  }
   if (meta.find(m => m.key === 'rulesVersion')?.value !== RULES_VERSION) {
     await reapplyRules();
     await db.put('meta', { key: 'rulesVersion', value: RULES_VERSION });
   }
+}
+
+/** Doda nove privzete (pod)kategorije in obstoječe privzete uvrsti pod nove glavne kategorije. Tvojih ne spreminja. */
+async function migrateCategories() {
+  const now = Date.now();
+  const byId = new Map(state.categories.map(c => [c.id, c]));
+  const changedCats = [];
+  DEFAULT_CATEGORIES.forEach((d, order) => {
+    const c = byId.get(d.id);
+    if (!c) {
+      if (state.tombstones.categories[d.id]) return; // izbrisal si jo
+      const added = { ...d, order, updatedAt: now };
+      state.categories.push(added);
+      changedCats.push(added);
+      return;
+    }
+    const patch = { parentId: d.parentId, kind: d.kind, order };
+    if (OLD_DEFAULT_NAMES[d.id] === c.name) Object.assign(patch, { name: d.name, emoji: d.emoji });
+    if (Object.entries(patch).some(([k, v]) => c[k] !== v)) {
+      Object.assign(c, patch, { updatedAt: now });
+      changedCats.push(c);
+    }
+  });
+  for (const c of state.categories) {
+    if (byId.has(c.id) && !DEFAULT_CATEGORIES.some(d => d.id === c.id) && c.order < DEFAULT_CATEGORIES.length) {
+      Object.assign(c, { order: c.order + DEFAULT_CATEGORIES.length, parentId: c.parentId ?? null, updatedAt: now });
+      changedCats.push(c);
+    }
+  }
+  state.categories.sort((a, b) => a.order - b.order);
+  await db.putMany('categories', changedCats);
 }
 
 /** Ponovno razvrsti uvožene transakcije, ki jih nisi ročno razvrstil (npr. po izboljšavi vgrajenih pravil). */
@@ -62,6 +100,20 @@ async function reapplyRules() {
 
 export const category = id => state.categories.find(c => c.id === id) ?? state.categories.find(c => c.id === 'other');
 export const kindOf = id => category(id)?.kind ?? 'expense';
+
+// ---------- Drevo kategorij (glavna → podkategorija) ----------
+export const parentOf = id => category(id)?.parentId ?? null;
+/** Glavna kategorija, ki ji pripada (za glavno kategorijo kar ona sama). */
+export const topOf = id => parentOf(id) ?? category(id)?.id;
+export const childrenOf = id => state.categories.filter(c => c.parentId === id);
+export const topCategories = kind => state.categories.filter(c => !c.parentId && (!kind || c.kind === kind));
+/** Ali transakcija s kategorijo catId spada pod filter (glavna kategorija vključuje svoje podkategorije). */
+export const inCategory = (catId, filterId) => catId === filterId || parentOf(catId) === filterId;
+export function categoryLabel(id) {
+  const c = category(id);
+  const p = c.parentId && state.categories.find(x => x.id === c.parentId);
+  return p ? `${p.name} › ${c.name}` : c.name;
+}
 
 export function allRules() {
   const ids = new Set(state.categories.map(c => c.id));
@@ -95,9 +147,11 @@ export async function deleteTransactions(ids) {
   localChange();
 }
 
-/** Shrani kategorijo brez ponovnega izrisa (urejanje imena ne sme izgubiti fokusa). */
+/** Shrani kategorijo brez ponovnega izrisa (urejanje imena ne sme izgubiti fokusa). Vrne shranjeno kategorijo. */
 export async function saveCategory(c) {
   c.id ??= uid();
+  c.parentId ??= null;
+  if (c.parentId) c.kind = kindOf(c.parentId);
   c.order ??= Math.max(-1, ...state.categories.map(x => x.order)) + 1;
   c.updatedAt = Date.now();
   const i = state.categories.findIndex(x => x.id === c.id);
@@ -105,25 +159,30 @@ export async function saveCategory(c) {
   else state.categories.push(c);
   await db.put('categories', c);
   document.dispatchEvent(new CustomEvent('local-change'));
+  return c;
 }
 
-/** Izbriše kategorijo; njene transakcije gredo v »Ostalo« (oz. »Drugi prihodki«). */
+/**
+ * Izbriše kategorijo. Transakcije podkategorije gredo v njeno glavno kategorijo;
+ * pri glavni kategoriji se izbrišejo tudi podkategorije, transakcije pa gredo v »Ostalo« (oz. »Drugi prihodki«).
+ */
 export async function deleteCategory(id) {
   const c = state.categories.find(x => x.id === id);
   if (!c) return;
-  const target = c.kind === 'income' ? 'income_other' : 'other';
+  const removed = new Set([id, ...childrenOf(id).map(x => x.id)]);
+  const target = c.parentId ?? (c.kind === 'income' ? 'income_other' : 'other');
   const now = Date.now();
-  const moved = state.transactions.filter(t => t.categoryId === id);
+  const moved = state.transactions.filter(t => removed.has(t.categoryId));
   moved.forEach(t => Object.assign(t, { categoryId: target, updatedAt: now }));
-  const rules = state.rules.filter(r => r.categoryId === id);
-  state.categories = state.categories.filter(x => x.id !== id);
-  state.rules = state.rules.filter(r => r.categoryId !== id);
+  const rules = state.rules.filter(r => removed.has(r.categoryId));
+  state.categories = state.categories.filter(x => !removed.has(x.id));
+  state.rules = state.rules.filter(r => !removed.has(r.categoryId));
   await Promise.all([
-    db.removeMany('categories', [id]),
+    db.removeMany('categories', [...removed]),
     db.removeMany('rules', rules.map(r => r.id)),
     db.putMany('transactions', moved),
   ]);
-  await bury('categories', [id]);
+  await bury('categories', [...removed]);
   await bury('rules', rules.map(r => r.id));
   localChange();
 }

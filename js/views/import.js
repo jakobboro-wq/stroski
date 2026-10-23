@@ -1,6 +1,7 @@
 import { state, allRules, saveTransactions, addRule, BASE_CURRENCY } from '../store.js';
 import { parseCSV, detectColumns, rowsToTransactions, COLUMN_FIELDS } from '../csv.js';
 import { readXlsx, isXlsx } from '../xlsx.js';
+import { categoryOptions } from '../category-ui.js';
 import { esc, signedMoney, plural, TX_FORMS, toast, icons } from '../ui.js';
 import { monthOf } from '../stats.js';
 
@@ -149,13 +150,6 @@ function drawPreview(view) {
     toast(`Uvoženo: ${plural(list.length, TX_FORMS)}`);
     location.hash = `#/pregled?m=${monthOf(latest)}`;
   });
-}
-
-function categoryOptions(selected) {
-  const groups = { expense: 'Stroški', income: 'Prihodki', transfer: 'Prenosi' };
-  return Object.entries(groups).map(([kind, label]) => `<optgroup label="${label}">${state.categories
-    .filter(c => c.kind === kind)
-    .map(c => `<option value="${esc(c.id)}"${c.id === selected ? ' selected' : ''}>${esc(c.emoji)} ${esc(c.name)}</option>`).join('')}</optgroup>`).join('');
 }
 
 const fmtDate = iso => { const [y, m, d] = iso.split('-'); return `${+d}. ${+m}. ${y}`; };

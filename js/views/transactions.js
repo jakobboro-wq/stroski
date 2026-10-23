@@ -1,4 +1,5 @@
-import { state, category, kindOf, BASE_CURRENCY } from '../store.js';
+import { state, category, kindOf, inCategory, categoryLabel, BASE_CURRENCY } from '../store.js';
+import { categoryOptions } from '../category-ui.js';
 import { normalize } from '../categorize.js';
 import { monthOf } from '../stats.js';
 import { openTxDialog } from '../dialog.js';
@@ -21,7 +22,7 @@ export function renderTransactions(view, params) {
       </select>
       <select id="fc" aria-label="Kategorija">
         <option value="">Vse kategorije</option>
-        ${state.categories.map(c => `<option value="${esc(c.id)}"${c.id === filters.c ? ' selected' : ''}>${esc(c.emoji)} ${esc(c.name)}</option>`).join('')}
+        ${categoryOptions(filters.c)}
       </select>
     </div>
     <p class="summary" id="txSummary"></p>
@@ -33,8 +34,8 @@ export function renderTransactions(view, params) {
     const q = normalize(filters.q);
     const rows = state.transactions
       .filter(t => (!filters.m || t.date.startsWith(filters.m))
-        && (!filters.c || t.categoryId === filters.c)
-        && (!q || normalize(`${t.description} ${category(t.categoryId).name} ${t.account ?? ''}`).includes(q)))
+        && (!filters.c || inCategory(t.categoryId, filters.c))
+        && (!q || normalize(`${t.description} ${categoryLabel(t.categoryId)} ${t.account ?? ''}`).includes(q)))
       .sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt ?? 0) - (a.createdAt ?? 0));
 
     let spend = 0, income = 0;
@@ -68,7 +69,7 @@ export function renderTransactions(view, params) {
           <span class="emoji-badge">${esc(c.emoji)}</span>
           <span class="tx-main">
             <span class="tx-desc">${esc(t.description || c.name)}</span>
-            <span class="tx-meta">${esc(c.name)}${t.account ? ` · ${esc(t.account)}` : ''}</span>
+            <span class="tx-meta">${esc(categoryLabel(c.id))}${t.account ? ` · ${esc(t.account)}` : ''}</span>
           </span>
           <span class="tx-amt ${kind}${t.amount > 0 && kind !== 'transfer' ? ' positive' : ''}">${signedMoney(t.amount, t.currency)}</span>
         </button>`;
