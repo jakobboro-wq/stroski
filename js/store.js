@@ -55,16 +55,19 @@ export async function load() {
   }
 }
 
-/** Doda nove privzete (pod)kategorije in obstoječe privzete uvrsti pod nove glavne kategorije. Tvojih ne spreminja. */
+/**
+ * Doda nove privzete (pod)kategorije in obstoječe privzete uvrsti pod nove glavne kategorije. Tvojih ne spreminja.
+ * Samodejne nadgradnje (tu in v reapplyRules) ne spreminjajo updatedAt: vsaka naprava jih izvede sama,
+ * sicer bi pri sinhronizaciji »premagale« izbris z druge naprave in izbrisani zapisi bi se vrnili.
+ */
 async function migrateCategories() {
-  const now = Date.now();
   const byId = new Map(state.categories.map(c => [c.id, c]));
   const changedCats = [];
   DEFAULT_CATEGORIES.forEach((d, order) => {
     const c = byId.get(d.id);
     if (!c) {
       if (state.tombstones.categories[d.id]) return; // izbrisal si jo
-      const added = { ...d, order, updatedAt: now };
+      const added = { ...d, order, updatedAt: 0 };
       state.categories.push(added);
       changedCats.push(added);
       return;
@@ -72,13 +75,13 @@ async function migrateCategories() {
     const patch = { parentId: d.parentId, kind: d.kind, order };
     if (OLD_DEFAULT_NAMES[d.id] === c.name) Object.assign(patch, { name: d.name, emoji: d.emoji });
     if (Object.entries(patch).some(([k, v]) => c[k] !== v)) {
-      Object.assign(c, patch, { updatedAt: now });
+      Object.assign(c, patch);
       changedCats.push(c);
     }
   });
   for (const c of state.categories) {
     if (byId.has(c.id) && !DEFAULT_CATEGORIES.some(d => d.id === c.id) && c.order < DEFAULT_CATEGORIES.length) {
-      Object.assign(c, { order: c.order + DEFAULT_CATEGORIES.length, parentId: c.parentId ?? null, updatedAt: now });
+      Object.assign(c, { order: c.order + DEFAULT_CATEGORIES.length, parentId: c.parentId ?? null });
       changedCats.push(c);
     }
   }
@@ -94,7 +97,7 @@ async function reapplyRules() {
     if (t.source !== 'csv' || t.categorySource === 'manual') continue;
     const { categoryId, source } = guessCategory(t, rules);
     if (categoryId !== t.categoryId) {
-      Object.assign(t, { categoryId, categorySource: source, updatedAt: Date.now() });
+      Object.assign(t, { categoryId, categorySource: source });
       changedTx.push(t);
     }
   }
