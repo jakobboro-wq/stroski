@@ -67,9 +67,18 @@ export function ask(message, { yes = 'Da', no = 'Prekliči', danger = false } = 
   yesBtn.textContent = yes;
   yesBtn.classList.toggle('danger', danger);
   dlg.querySelector('[value=no]').textContent = no;
-  dlg.returnValue = '';
+  // Odziv na klik gumba (submit) ali Escape (cancel), ne na dogodek close, ki ga brskalnik lahko zakasni.
+  const form = dlg.querySelector('form');
   return new Promise(resolve => {
-    dlg.addEventListener('close', () => resolve(dlg.returnValue === 'yes'), { once: true });
+    const done = value => {
+      form.removeEventListener('submit', onSubmit);
+      dlg.removeEventListener('cancel', onCancel);
+      resolve(value);
+    };
+    const onSubmit = e => done(e.submitter?.value === 'yes');
+    const onCancel = () => done(false);
+    form.addEventListener('submit', onSubmit);
+    dlg.addEventListener('cancel', onCancel);
     dlg.showModal();
   });
 }

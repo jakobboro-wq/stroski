@@ -1,6 +1,6 @@
-import { load } from './store.js';
+import { load, generateRecurring } from './store.js';
 import { openTxDialog } from './dialog.js';
-import { hideTip } from './ui.js';
+import { hideTip, todayISO } from './ui.js';
 import { initSync } from './sync.js';
 import { renderOverview } from './views/overview.js';
 import { renderTransactions } from './views/transactions.js';
@@ -29,11 +29,20 @@ function render() {
   }
 }
 
+// Ponavljajoči stroški: ob zagonu, ob vrnitvi v aplikacijo in po sinhronizaciji dodaj zapadle.
+let recurringTimer;
+const checkRecurring = () => {
+  clearTimeout(recurringTimer);
+  recurringTimer = setTimeout(() => generateRecurring(todayISO()), 800);
+};
+
 document.getElementById('addBtn').addEventListener('click', () => openTxDialog());
 window.addEventListener('hashchange', render);
-document.addEventListener('data-changed', render);
+document.addEventListener('data-changed', () => { render(); checkRecurring(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkRecurring(); });
 
 await load();
+await generateRecurring(todayISO());
 render();
 initSync();
 

@@ -69,7 +69,7 @@ export function renderTransactions(view, params) {
           <span class="emoji-badge">${esc(c.emoji)}</span>
           <span class="tx-main">
             <span class="tx-desc">${esc(t.description || c.name)}</span>
-            <span class="tx-meta">${esc(categoryLabel(c.id))}${t.account ? ` · ${esc(t.account)}` : ''}</span>
+            <span class="tx-meta">${t.seriesId ? '🔁 ' : ''}${esc(categoryLabel(c.id))}${t.account ? ` · ${esc(t.account)}` : ''}</span>
           </span>
           <span class="tx-amt ${kind}${t.amount > 0 && kind !== 'transfer' ? ' positive' : ''}">${signedMoney(t.amount, t.currency)}</span>
         </button>`;

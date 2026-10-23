@@ -1,6 +1,10 @@
 import { state, category, kindOf, topOf, BASE_CURRENCY } from '../store.js';
 import { normalize } from '../categorize.js';
-import { buildIndex, addMonths, average, spendOf, incomeOf, daysInMonth } from '../stats.js';
+import { buildIndex, addMonths, average, spendOf, incomeOf, variableOf, daysInMonth } from '../stats.js';
+import { EVERY, occurrencesBetween, amountInMonth, nextOccurrence } from '../recurring.js';
+import { openTxDialog } from '../dialog.js';
+
+const dayShort = iso => { const [, m, d] = iso.split('-'); return `${+d}. ${+m}.`; };
 import { columnChart } from '../charts.js';
 import { loadDemo } from '../demo.js';
 import { esc, money, money0, signedMoney, monthLabel, currentMonth, todayISO, plural, TX_FORMS, showTip, hideTip, icons, toast } from '../ui.js';
@@ -51,8 +55,37 @@ export function renderOverview(view, params) {
   const dim = daysInMonth(month);
   const daysCounted = isCurrent ? today : dim;
 
-  // Napoved do konca meseca (linearno), le za tekoči mesec.
-  const projection = isCurrent && today >= 3 && today < dim ? (spend / today) * dim : null;
+  // Napoved do konca meseca: dosedanja poraba + ponavljajoči, ki še pridejo + ostala poraba po dosedanjem tempu.
+  const expenseSeries = state.recurring.filter(s => kindOf(s.categoryId) === 'expense' && s.currency === BASE_CURRENCY);
+  const incomeSeries = state.recurring.filter(s => kindOf(s.categoryId) === 'income' && s.currency === BASE_CURRENCY);
+  const [ty, tm, td] = todayISO().split('-').map(Number);
+  const tomorrow = new Date(Date.UTC(ty, tm - 1, td + 1)).toISOString().slice(0, 10);
+  const upcomingFixed = isCurrent
+    ? expenseSeries.reduce((sum, s) => sum - occurrencesBetween(s, tomorrow, `${month}-${String(dim).padStart(2, '0')}`).length * s.amount, 0)
+    : 0;
+  const projection = isCurrent && today < dim && (today >= 3 || upcomingFixed > 0)
+    ? spend + upcomingFixed + (today >= 3 ? (variableOf(cur) / today) * (dim - today) : 0)
+    : null;
+
+  // Napoved za naslednje mesece: ponavljajoči + povprečje ostale porabe zadnjih (do) 3 polnih mesecev
+  const pastVariable = [1, 2, 3].map(i => addMonths(now, -i)).filter(k => idx.first && k >= idx.first).map(k => variableOf(idx.months.get(k)));
+  const curDay = Number(todayISO().slice(8, 10));
+  const variableAvg = pastVariable.length
+    ? pastVariable.reduce((a, b) => a + b, 0) / pastVariable.length
+    : curDay >= 7 && idx.months.has(now) ? (variableOf(idx.months.get(now)) / curDay) * daysInMonth(now) : null;
+  const forecast = [1, 2, 3, 4, 5, 6].map(i => {
+    const k = addMonths(now, i);
+    const fixed = expenseSeries.reduce((sum, s) => sum - amountInMonth(s, k), 0);
+    const inc = incomeSeries.reduce((sum, s) => sum + amountInMonth(s, k), 0);
+    return { k, fixed, variable: variableAvg ?? 0, total: fixed + (variableAvg ?? 0), income: inc };
+  });
+  const forecastMax = Math.max(1, ...forecast.map(r => r.total));
+
+  // Seznam ponavljajočih
+  const seriesRows = state.recurring
+    .map(s => ({ s, c: category(s.categoryId), perMonth: Math.abs(s.amount) * EVERY[s.every].perMonth, next: nextOccurrence(s, todayISO()) }))
+    .sort((a, b) => b.perMonth - a.perMonth);
+  const fixedPerMonth = seriesRows.filter(r => r.c.kind === 'expense').reduce((sum, r) => sum + r.perMonth, 0);
 
   // Kategorije: seštevek po glavnih kategorijah, s podkategorijami pod njimi
   const spendInTop = topId => e => {
@@ -123,7 +156,7 @@ export function renderOverview(view, params) {
         ${delta(spend, prevSpend, 'prejšnji mesec')}
         ${delta(spend, avgSpend, 'povprečje zadnjih mesecev')}
       </div>
-      ${projection ? `<p class="muted small">Če nadaljuješ s tem tempom: približno <b>${money0(projection)}</b> do konca meseca.</p>` : ''}
+      ${projection ? `<p class="muted small">Napoved do konca meseca: približno <b>${money0(projection)}</b>${upcomingFixed > 0 ? ` (od tega še ${money0(upcomingFixed)} ponavljajočih stroškov)` : ''}.</p>` : ''}
     </section>
 
     <div class="tiles">
@@ -138,6 +171,44 @@ export function renderOverview(view, params) {
       <h2>Poraba po mesecih</h2>
       <div class="chart" id="monthChart"></div>
     </section>
+
+    ${isCurrent ? `
+    <div class="two-col">
+      <section class="card">
+        <div class="card-head">
+          <h2>Napoved</h2>
+          ${variableAvg != null && seriesRows.length ? '<div class="legend"><span><i class="key-bar"></i>ponavljajoči</span><span><i class="key-bar soft"></i>ostalo (ocena)</span></div>' : ''}
+        </div>
+        ${variableAvg == null && !seriesRows.length
+          ? '<p class="muted small">Napoved za naslednje mesece se pokaže, ko bo dovolj podatkov (približno teden dni) ali ko označiš ponavljajoče stroške.</p>'
+          : `<div class="forecast">${forecast.map(r => `
+              <div class="fc-row" title="Ponavljajoči ${money0(r.fixed)}${variableAvg != null ? ` · ostalo ~${money0(r.variable)}` : ''}">
+                <span class="fc-month">${esc(monthLabel(r.k, 'short').replace('.', ''))}</span>
+                <span class="fc-bar"><i style="width:${(r.fixed / forecastMax) * 100}%"></i><i class="soft" style="width:${(r.variable / forecastMax) * 100}%"></i></span>
+                <span class="fc-amt">${variableAvg != null ? '~' : ''}${money0(r.total)}</span>
+              </div>`).join('')}</div>
+            <p class="muted small">${variableAvg != null
+              ? `Ponavljajoči stroški + povprečje ostale porabe${pastVariable.length ? ` zadnjih ${pastVariable.length === 1 ? 'mesec' : `${pastVariable.length} mesecev`}` : ' ta mesec'} (~${money0(variableAvg)}/mesec).`
+              : 'Zaenkrat samo ponavljajoči stroški. Ocena ostale porabe se doda, ko bo dovolj podatkov.'}
+              ${forecast.some(r => r.income) ? ` Pričakovani ponavljajoči prihodki: ~${money0(forecast[0].income)}/mesec.` : ''}</p>`}
+      </section>
+
+      <section class="card">
+        <h2>Ponavljajoči stroški</h2>
+        ${seriesRows.length ? `
+          <div class="series-list">${seriesRows.map(r => `
+            <button class="tx-row" data-series="${esc(r.s.id)}">
+              <span class="emoji-badge">${esc(r.c.emoji)}</span>
+              <span class="tx-main">
+                <span class="tx-desc">${esc(r.s.description || r.c.name)}</span>
+                <span class="tx-meta">${esc(EVERY[r.s.every].short)}${r.next ? ` · naslednjič ${esc(dayShort(r.next))}` : ''}</span>
+              </span>
+              <span class="tx-amt${r.s.amount > 0 ? ' income' : ''}">${signedMoney(r.s.amount, r.s.currency)}</span>
+            </button>`).join('')}</div>
+          <p class="series-total">Skupaj <b>${money(fixedPerMonth)}</b> na mesec · <b>${money0(fixedPerMonth * 12)}</b> na leto</p>`
+        : '<p class="muted small">Pri vnosu stroška izberi <b>Ponavljanje</b> (npr. naročnina vsak mesec, zavarovanje vsako leto). Aplikacija ga bo nato dodajala sama in upoštevala v napovedi.</p>'}
+      </section>
+    </div>` : ''}
 
     <div class="two-col">
       <section class="card">
@@ -186,6 +257,12 @@ export function renderOverview(view, params) {
     ariaLabel: 'Poraba po mesecih',
     onSelect: key => { location.hash = `#/pregled?m=${key}`; },
   });
+
+  // Klik na ponavljajoči strošek odpre njegovo zadnjo transakcijo (sprememba zneska velja za naprej).
+  view.querySelectorAll('[data-series]').forEach(btn => btn.addEventListener('click', () => {
+    const latest = state.transactions.filter(t => t.seriesId === btn.dataset.series).sort((a, b) => b.date.localeCompare(a.date))[0];
+    if (latest) openTxDialog(latest);
+  }));
 
   // Namig nad kategorijo (miška): ta mesec, prejšnji mesec, povprečje.
   view.querySelectorAll('.cat-row').forEach(el => {

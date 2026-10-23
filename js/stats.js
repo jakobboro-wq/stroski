@@ -23,11 +23,12 @@ export function buildIndex(transactions, kindOf, baseCurrency) {
     const m = monthOf(t.date);
     if (!first || m < first) first = m;
     let e = months.get(m);
-    if (!e) months.set(m, (e = { spend: 0, income: 0, count: 0, byCat: new Map() }));
+    if (!e) months.set(m, (e = { spend: 0, fixed: 0, income: 0, count: 0, byCat: new Map() }));
     e.count++;
     if (kind === 'income') e.income += t.amount;
     else {
       e.spend -= t.amount;
+      if (t.seriesId) e.fixed -= t.amount; // ponavljajoči strošek
       e.byCat.set(t.categoryId, (e.byCat.get(t.categoryId) ?? 0) - t.amount);
     }
   }
@@ -48,6 +49,8 @@ export function average(index, month, pick, n = 6) {
 }
 
 export const spendOf = e => e?.spend ?? 0;
+/** Poraba brez ponavljajočih stroškov (hrana, izhodi …) – osnova za oceno prihodnjih mesecev. */
+export const variableOf = e => (e?.spend ?? 0) - (e?.fixed ?? 0);
 export const incomeOf = e => e?.income ?? 0;
 export const catSpendOf = id => e => e?.byCat.get(id) ?? 0;
 

@@ -1,6 +1,7 @@
 // Okno za dodajanje in urejanje transakcije.
 
-import { state, category, kindOf, topOf, childrenOf, topCategories, categoryLabel, accounts, saveCategory, saveTransactions, deleteTransactions, addRule, BASE_CURRENCY } from './store.js';
+import { state, category, kindOf, topOf, childrenOf, topCategories, categoryLabel, accounts, saveCategory, saveTransactions, deleteTransactions, addRule, seriesById, saveSeries, deleteSeries, generateRecurring, BASE_CURRENCY } from './store.js';
+import { EVERY, nextOccurrence } from './recurring.js';
 import { FALLBACK_CATEGORY, normalize } from './categorize.js';
 import { parseNumber } from './csv.js';
 import { esc, todayISO, ask, toast, plural, TX_FORMS } from './ui.js';
@@ -100,9 +101,29 @@ export function openTxDialog(tx = null) {
   const foreign = tx && tx.currency !== BASE_CURRENCY;
   document.getElementById('txCurrency').textContent = foreign ? tx.currency : '€';
   renderCategories(kind, tx?.categoryId);
+  f.repeat.value = (tx?.seriesId && seriesById(tx.seriesId)?.every) || '';
   setTitle();
+  updateRepeatHint();
   dlg.showModal();
   if (!tx) requestAnimationFrame(() => f.amount.focus());
+}
+
+const fmtDay = iso => { const [, m, d] = iso.split('-'); return `${+d}. ${+m}.`; };
+
+function updateRepeatHint() {
+  const hint = document.getElementById('repeatHint');
+  const series = editing?.seriesId && seriesById(editing.seriesId);
+  const every = f.repeat.value;
+  if (!every) {
+    hint.hidden = !series;
+    hint.textContent = series ? 'Ponavljanje se bo ustavilo. Že vnesene transakcije ostanejo.' : '';
+    return;
+  }
+  const next = nextOccurrence({ anchor: f.date.value || todayISO(), every }, todayISO());
+  hint.hidden = false;
+  hint.textContent = series && series.every === every
+    ? `Ponavljajoč strošek (naslednjič ${fmtDay(nextOccurrence(series, todayISO()) ?? next)}). Sprememba zneska velja tudi za naprej.`
+    : `Aplikacija bo to sama dodala ${EVERY[every].short}${next ? ` (naslednjič ${fmtDay(next)})` : ''} in upoštevala v napovedi.`;
 }
 
 form.addEventListener('change', e => {
@@ -110,6 +131,7 @@ form.addEventListener('change', e => {
     renderCategories(f.kind.value, null);
     setTitle();
   }
+  if (e.target.name === 'repeat' || e.target.name === 'date') updateRepeatHint();
 });
 f.amount.addEventListener('input', () => f.amount.setCustomValidity(''));
 document.getElementById('txClose').addEventListener('click', () => dlg.close());
@@ -141,7 +163,33 @@ form.addEventListener('submit', async e => {
     categorySource: 'manual',
   };
   dlg.close();
+
+  // Ponavljanje: nova predloga, sprememba ritma ali ustavitev
+  const series = before?.seriesId ? seriesById(before.seriesId) : null;
+  const repeat = f.repeat.value;
+  const template = { description: tx.description, amount: tx.amount, categoryId, account: tx.account, currency: tx.currency };
+  let repeatNote = '';
+  if (repeat && !series) {
+    const s = await saveSeries({ ...template, every: repeat, anchor: tx.date });
+    tx.seriesId = s.id;
+    repeatNote = 'Ponavljajoč strošek shranjen';
+  } else if (series && !repeat) {
+    if (await ask('Ustavim ponavljanje? Že vnesene transakcije ostanejo.', { yes: 'Ustavi' })) {
+      await deleteSeries(series.id);
+      repeatNote = 'Ponavljanje ustavljeno';
+    }
+  } else if (series) {
+    const dates = state.transactions.filter(t => t.seriesId === series.id).map(t => t.date);
+    const latest = [...dates, tx.date].sort().at(-1);
+    if (repeat !== series.every) await saveSeries({ ...series, ...template, every: repeat, anchor: latest });
+    else if (tx.date >= latest) await saveSeries({ ...series, ...template }); // zadnja ponovitev določa znesek za naprej
+  }
   await saveTransactions([tx]);
+  if (repeatNote) {
+    const n = await generateRecurring(todayISO());
+    toast(n ? `${repeatNote} · dodane pretekle ponovitve: ${n}` : repeatNote);
+    return;
+  }
 
   // Ko popraviš kategorijo uvožene transakcije, ponudi pravilo za vse enake.
   if (before && before.categoryId !== categoryId && tx.description && before.source !== 'manual') {

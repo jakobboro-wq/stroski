@@ -421,6 +421,22 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .new-cat { display: flex; gap: 6px; margin-top: 8px; }
 .new-cat .new-name { flex: 1; min-width: 0; }
 
+/* ---------- Ponavljajoči in napoved ---------- */
+.key-bar.soft { background: var(--accent-soft); }
+.forecast { display: grid; gap: 8px; margin-bottom: 10px; }
+.fc-row { display: grid; grid-template-columns: 36px 1fr auto; align-items: center; gap: 10px; }
+.fc-month { font-size: 13px; color: var(--ink-2); }
+.fc-bar { display: flex; gap: 2px; height: 10px; }
+.fc-bar i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+.fc-bar i:first-child { border-radius: 4px 2px 2px 4px; }
+.fc-bar i.soft { background: var(--accent-soft); border-radius: 2px 4px 4px 2px; }
+.fc-bar i[style*="width:0%"] { display: none; }
+.fc-amt { font-weight: 600; font-variant-numeric: tabular-nums; min-width: 64px; text-align: right; }
+.series-list { display: grid; }
+.series-total { margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--line); font-size: 14px; color: var(--ink-2); }
+.series-total b { color: var(--ink); }
+.repeat-hint { margin: -6px 0 0; }
+
 /* ---------- Sinhronizacija ---------- */
 .sync-form { display: grid; gap: 12px; max-width: 420px; }
 .form-error { color: var(--bad); font-size: 14px; margin: 8px 0; }

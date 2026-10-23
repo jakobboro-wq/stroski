@@ -1,8 +1,8 @@
 // Tanek ovoj okoli IndexedDB. Vsi podatki živijo v brskalniku na tej napravi.
 
 const DB_NAME = 'stroski';
-const DB_VERSION = 1;
-const STORES = { transactions: 'id', categories: 'id', rules: 'id', meta: 'key' };
+const DB_VERSION = 2;
+const STORES = { transactions: 'id', categories: 'id', rules: 'id', recurring: 'id', meta: 'key' };
 
 let dbPromise;
 
@@ -14,8 +14,16 @@ function open() {
         if (!req.result.objectStoreNames.contains(name)) req.result.createObjectStore(name, { keyPath });
       }
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      // Ko se v drugem zavihku naloži novejša verzija, sprosti bazo in se osveži.
+      req.result.onversionchange = () => { req.result.close(); location.reload(); };
+      resolve(req.result);
+    };
     req.onerror = () => reject(req.error);
+    // Starejša verzija aplikacije je odprta v drugem zavihku in drži bazo.
+    req.onblocked = () => {
+      document.getElementById('view').innerHTML = '<div class="card">Aplikacija se posodablja. Zapri druge zavihke ali okna aplikacije Stroški, nato osveži to stran.</div>';
+    };
   });
   return dbPromise;
 }

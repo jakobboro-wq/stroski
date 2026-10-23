@@ -69,6 +69,16 @@
           <label class="field">Račun<input name="account" list="accountList" autocomplete="off"></label>
         </div>
         <datalist id="accountList"></datalist>
+        <label class="field">Ponavljanje
+          <select name="repeat">
+            <option value="">Ne ponavlja se</option>
+            <option value="week">🔁 Vsak teden</option>
+            <option value="month">🔁 Vsak mesec</option>
+            <option value="quarter">🔁 Vsake 3 mesece</option>
+            <option value="year">🔁 Vsako leto</option>
+          </select>
+        </label>
+        <p class="muted small repeat-hint" id="repeatHint" hidden></p>
       </div>
       <footer class="sheet-foot">
         <button type="button" class="btn danger ghost" id="txDelete" hidden>Izbriši</button>
