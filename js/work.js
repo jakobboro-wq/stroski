@@ -1,7 +1,8 @@
 // Evidenca ur: izračun ur in zaslužka, uvoz iz Excela, pretvorba dogodkov prihod/odhod v delovne dni.
 // Izračun sledi tabeli »RTC evidenca ur«: ure = odhod − prihod (odmor je plačan), zaslužek po dnevih zaokrožen na cent.
 
-export const DEFAULT_PAY = { id: 'pay', employer: 'RTC', netRate: 11, piz: 0.155, tax: 0, rounding: 5 };
+// rounding: zaokroževanje časa prihoda/odhoda (min); hoursStep/hoursMode: zaokroževanje opravljenih ur (min, nearest|down|up)
+export const DEFAULT_PAY = { id: 'pay', employer: 'RTC', netRate: 11, piz: 0.155, tax: 0, rounding: 5, hoursStep: 30, hoursMode: 'nearest' };
 
 const pad = n => String(n).padStart(2, '0');
 const round2 = n => Math.round(n * 100) / 100;
@@ -14,11 +15,21 @@ export const toMin = hhmm => {
 export const fromMin = min => `${pad(Math.floor(min / 60) % 24)}:${pad(min % 60)}`;
 export const localDate = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-/** Ure dneva (2 decimalki), null če manjka prihod ali odhod. Čez polnoč se šteje pravilno. */
-export function hoursOf(s) {
+/** Dejansko trajanje v minutah, null če manjka prihod ali odhod. Čez polnoč se šteje pravilno. */
+export function minutesOf(s) {
   const a = toMin(s.start), b = toMin(s.end);
   if (a == null || b == null) return null;
-  return round2((((b - a) % 1440) + 1440) % 1440 / 60);
+  return (((b - a) % 1440) + 1440) % 1440;
+}
+
+/** Obračunane ure dneva: trajanje, zaokroženo po nastavitvi (npr. na pol ure), na 2 decimalki. */
+export function hoursOf(s, p = DEFAULT_PAY) {
+  const min = minutesOf(s);
+  if (min == null) return null;
+  const step = p.hoursStep ?? 0;
+  if (!step) return round2(min / 60);
+  const fn = { down: Math.floor, up: Math.ceil }[p.hoursMode] ?? Math.round;
+  return round2((fn(min / step) * step) / 60);
 }
 
 /** Bruto urna postavka iz neto: neto / (1 − PIZ − dohodnina), na 4 decimalke kot v Excelu. */
@@ -33,7 +44,7 @@ export function monthTotals(sessions, month, p) {
   const t = { hours: 0, net: 0, gross: 0, days: new Set(), open: 0 };
   for (const s of sessions) {
     if (!s.date.startsWith(month)) continue;
-    const h = hoursOf(s);
+    const h = hoursOf(s, p);
     if (h == null) { t.open++; continue; }
     const pay = payOf(h, p);
     t.hours += h;
@@ -141,7 +152,7 @@ export function monthCSV(sessions, month, p) {
   const num = v => (v == null || v === '' ? '' : String(v).replace('.', ','));
   const lines = [['Datum', 'Prihod', 'Odhod', 'Ure', 'Bruto (€)', 'Neto (€)', 'Opomba']];
   for (const s of sessions.filter(x => x.date.startsWith(month)).sort((a, b) => a.date.localeCompare(b.date) || (a.start ?? '').localeCompare(b.start ?? ''))) {
-    const h = hoursOf(s);
+    const h = hoursOf(s, p);
     const pay = h == null ? null : payOf(h, p);
     const [y, m, d] = s.date.split('-');
     lines.push([`${+d}. ${+m}. ${y}`, s.start ?? '', s.end ?? '', num(h), num(pay?.gross), num(pay?.net), s.note ?? '']);

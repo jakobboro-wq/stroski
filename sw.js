@@ -1,7 +1,7 @@
 // Service worker: aplikacija deluje tudi brez povezave.
 // Najprej poskusi omrežje (da dobiš novo verzijo), ob izpadu uporabi shranjeno kopijo.
 
-const CACHE = 'stroski-v8';
+const CACHE = 'stroski-v9';
 const SHELL = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',

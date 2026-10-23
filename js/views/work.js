@@ -1,7 +1,7 @@
 // Zavihek »Ure«: evidenca prihodov/odhodov, zaslužek, uvoz iz Excela in samodejno beleženje s telefonom.
 
 import { state, saveWork, deleteWork, getSetting, saveSetting } from '../store.js';
-import { DEFAULT_PAY, hoursOf, payOf, grossRate, monthTotals, roundTime, toMin, parseWorkbook, monthCSV } from '../work.js';
+import { DEFAULT_PAY, hoursOf, minutesOf, payOf, grossRate, monthTotals, roundTime, toMin, parseWorkbook, monthCSV } from '../work.js';
 import { readXlsxSheets, isXlsx } from '../xlsx.js';
 import { addMonths } from '../stats.js';
 import * as cloud from '../cloud.js';
@@ -32,8 +32,8 @@ export function renderWork(view, params) {
       const mins = Math.max(0, new Date().getHours() * 60 + new Date().getMinutes() - toMin(open.start));
       status = `<div class="punch on"><div><b>V službi od ${esc(open.start)}</b><span>${Math.floor(mins / 60)} h ${mins % 60} min</span></div><button class="btn primary" id="punch" data-kind="out">Odhod zdaj</button></div>`;
     } else {
-      const done = todays.filter(s => hoursOf(s) != null);
-      const info = done.length ? `Danes ${done.map(s => `${s.start}–${s.end}`).join(', ')} · ${hoursLabel(done.reduce((a, s) => a + hoursOf(s), 0))}` : 'Danes še ni prihoda.';
+      const done = todays.filter(s => hoursOf(s, pay) != null);
+      const info = done.length ? `Danes ${done.map(s => `${s.start}–${s.end}`).join(', ')} · ${hoursLabel(done.reduce((a, s) => a + hoursOf(s, pay), 0))}` : 'Danes še ni prihoda.';
       status = `<div class="punch"><div><b>${esc(info)}</b></div><button class="btn primary" id="punch" data-kind="in">Prihod zdaj</button></div>`;
     }
   }
@@ -60,9 +60,11 @@ export function renderWork(view, params) {
     <section class="card">
       <div class="card-head"><h2>Dnevi${totals.days ? ` (${totals.days})` : ''}</h2><button class="btn" id="addDay">+ Dodaj</button></div>
       ${sessions.length ? `<div class="work-list">${sessions.map(s => {
-        const h = hoursOf(s);
+        const h = hoursOf(s, pay);
+        const raw = minutesOf(s);
+        const actual = raw != null && raw / 60 !== h ? ` title="Dejansko ${Math.floor(raw / 60)} h ${raw % 60} min"` : '';
         return `
-          <button class="work-row${h == null ? ' open' : ''}" data-id="${esc(s.id)}">
+          <button class="work-row${h == null ? ' open' : ''}" data-id="${esc(s.id)}"${actual}>
             <span class="work-day">${esc(dayName(s.date))}</span>
             <span class="work-time">${esc(s.start || '—')} – ${esc(s.end || (s.start ? 'še traja' : '—'))}${s.source === 'auto' ? ' <span title="Zabeleženo samodejno">📍</span>' : ''}${s.note ? `<small>${esc(s.note)}</small>` : ''}</span>
             <span class="work-hours">${h == null ? '' : hoursLabel(h)}</span>
@@ -86,10 +88,17 @@ export function renderWork(view, params) {
           <label class="field">Neto urna postavka (€)<input name="netRate" inputmode="decimal" value="${num(pay.netRate, 4)}"></label>
           <label class="field">PIZ (%)<input name="piz" inputmode="decimal" value="${num(pay.piz * 100, 3)}"></label>
           <label class="field">Akontacija dohodnine (%)<input name="tax" inputmode="decimal" value="${num(pay.tax * 100, 3)}"></label>
-          <label class="field">Zaokroževanje časa
-            <select name="rounding">${[1, 5, 10, 15].map(m => `<option value="${m}"${pay.rounding === m ? ' selected' : ''}>${m} min</option>`).join('')}</select>
+          <label class="field">Zaokroževanje ur
+            <select name="hoursStep">${[[0, 'Brez (točno)'], [15, 'Na četrt ure'], [30, 'Na pol ure'], [60, 'Na uro']].map(([v, l]) => `<option value="${v}"${pay.hoursStep === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
+          </label>
+          <label class="field">Smer zaokroževanja
+            <select name="hoursMode"${pay.hoursStep ? '' : ' disabled'}>${[['nearest', 'Najbližje'], ['down', 'Navzdol'], ['up', 'Navzgor']].map(([v, l]) => `<option value="${v}"${pay.hoursMode === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
+          </label>
+          <label class="field">Čas prihoda/odhoda
+            <select name="rounding">${[1, 5, 10, 15].map(m => `<option value="${m}"${pay.rounding === m ? ' selected' : ''}>na ${m} min</option>`).join('')}</select>
           </label>
         </form>
+        <p class="muted small">${pay.hoursStep ? `Opravljene ure se zaokrožijo ${{ nearest: 'na najbližjo', down: 'navzdol na', up: 'navzgor na' }[pay.hoursMode]} ${{ 15: 'četrt ure', 30: 'pol ure', 60: 'uro' }[pay.hoursStep]} (npr. 8 h 20 min → ${num(hoursOf({ start: '08:00', end: '16:20' }, pay))} h).` : 'Ure se štejejo točno po minutah.'}</p>
         <p class="muted small">Bruto urna postavka: <b>${money(grossRate(pay))}</b>. Odmor je plačan in šteje v delovni čas.</p>
         <div class="button-row">
           <label class="btn">Uvozi iz Excela<input type="file" id="importXlsx" accept=".xlsx" hidden></label>
@@ -105,7 +114,15 @@ export function renderWork(view, params) {
   view.querySelector('#payForm').addEventListener('change', e => {
     const f = e.currentTarget.elements;
     const parse = v => Number(String(v).replace(',', '.'));
-    const next = { ...pay, netRate: parse(f.netRate.value), piz: parse(f.piz.value) / 100, tax: parse(f.tax.value) / 100, rounding: Number(f.rounding.value) };
+    const next = {
+      ...pay,
+      netRate: parse(f.netRate.value),
+      piz: parse(f.piz.value) / 100,
+      tax: parse(f.tax.value) / 100,
+      rounding: Number(f.rounding.value),
+      hoursStep: Number(f.hoursStep.value),
+      hoursMode: f.hoursMode.value,
+    };
     if (![next.netRate, next.piz, next.tax].every(Number.isFinite) || next.netRate <= 0 || next.piz + next.tax >= 1) return toast('Preveri vpisane vrednosti.');
     saveSetting(next);
   });
