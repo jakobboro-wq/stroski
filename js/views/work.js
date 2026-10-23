@@ -142,7 +142,7 @@ function autoSetup(token) {
     <ol class="steps">
       <li>Namesti <b>MacroDroid</b> iz Trgovine Play.</li>
       <li><b>Dodaj makro</b> → sprožilec <b>Location → Geofence</b> → na zemljevidu označi službo (polmer ~150 m) → <b>Area entered</b> (vstop).</li>
-      <li>Dejanje <b>Connectivity → HTTP Request</b>: metoda <b>POST</b>, vrsta vsebine <b>application/json</b>, nato vpiši spodnje vrednosti.</li>
+      <li>Dejanje <b>Web Interactions → HTTP Request</b> (ali z lupo poišči »HTTP«): metoda <b>POST</b>, vrsta vsebine <b>application/json</b>, nato vpiši spodnje vrednosti.</li>
       <li>Makro shrani kot »Prihod v službo«. Drugi makro naredi enako, le s sprožilcem <b>Area exited</b> (izhod) in telesom za odhod.</li>
       <li>V nastavitvah Androida za MacroDroid dovoli lokacijo <b>Vedno</b> in baterijo <b>Brez omejitev</b>, sicer se lahko ne sproži.</li>
       <li>Preizkus: v makru tapni <b>Test actions</b>. Ko naslednjič odpreš aplikacijo, se prihod pokaže tukaj.</li>
