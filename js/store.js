@@ -8,10 +8,11 @@ import { dueTransactions } from './recurring.js';
 
 export const BASE_CURRENCY = 'EUR';
 // recurring: ponavljajoči stroški/prihodki (predloge, iz katerih nastajajo transakcije)
-export const state = { transactions: [], categories: [], rules: [], recurring: [], tombstones: emptyTombstones() };
+// work: delovni dnevi (prihod/odhod), settings: nastavitve, ki se sinhronizirajo (npr. obračun ur)
+export const state = { transactions: [], categories: [], rules: [], recurring: [], work: [], settings: [], tombstones: emptyTombstones() };
 
 const uid = () => crypto.randomUUID?.() ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
-function emptyTombstones() { return { transactions: {}, categories: {}, rules: {}, recurring: {} }; }
+function emptyTombstones() { return { transactions: {}, categories: {}, rules: {}, recurring: {}, work: {}, settings: {} }; }
 const DEFAULT_IDS = new Set(DEFAULT_CATEGORIES.map(c => c.id));
 
 /** Obvesti prikaz, da so se podatki spremenili. */
@@ -30,8 +31,8 @@ async function bury(store, ids) {
 }
 
 export async function load() {
-  let [transactions, categories, rules, recurring, meta] = await Promise.all(['transactions', 'categories', 'rules', 'recurring', 'meta'].map(db.getAll));
-  state.recurring = recurring;
+  let [transactions, categories, rules, recurring, work, settings, meta] = await Promise.all(['transactions', 'categories', 'rules', 'recurring', 'work', 'settings', 'meta'].map(db.getAll));
+  Object.assign(state, { recurring, work, settings });
   if (!categories.length) {
     // Nova naprava: privzete kategorije z updatedAt 0, da ob sinhronizaciji zmagajo tiste iz oblaka.
     categories = DEFAULT_CATEGORIES.map((c, order) => ({ ...c, order }));
@@ -242,6 +243,37 @@ export async function deleteSeries(id) {
   localChange();
 }
 
+// ---------- Ure in nastavitve ----------
+
+export async function saveWork(list) {
+  const now = Date.now();
+  const byId = new Map(state.work.map(s => [s.id, s]));
+  for (const s of list) {
+    s.id ??= uid();
+    s.updatedAt = now;
+    byId.set(s.id, s);
+  }
+  state.work = [...byId.values()];
+  await db.putMany('work', list);
+  localChange();
+}
+
+export async function deleteWork(ids) {
+  const set = new Set(ids);
+  state.work = state.work.filter(s => !set.has(s.id));
+  await Promise.all([db.removeMany('work', ids), bury('work', ids)]);
+  localChange();
+}
+
+export const getSetting = (id, fallback = {}) => ({ ...fallback, ...state.settings.find(s => s.id === id) });
+
+export async function saveSetting(value) {
+  value.updatedAt = Date.now();
+  state.settings = [...state.settings.filter(s => s.id !== value.id), value];
+  await db.put('settings', value);
+  localChange();
+}
+
 /** Doda transakcije ponavljajočih stroškov, ki so do danes zapadle. Izbrisanih ne ustvari znova. Vrne število dodanih. */
 export async function generateRecurring(today) {
   const existing = new Set(state.transactions.map(t => t.id));
@@ -259,6 +291,8 @@ export const snapshot = () => ({
   categories: state.categories,
   rules: state.rules,
   recurring: state.recurring,
+  work: state.work,
+  settings: state.settings,
   tombstones: state.tombstones,
 });
 
@@ -273,6 +307,8 @@ export async function applySnapshot(data) {
   state.categories = [...data.categories].sort((a, b) => a.order - b.order);
   state.rules = data.rules;
   state.recurring = data.recurring;
+  state.work = data.work;
+  state.settings = data.settings;
   state.tombstones = data.tombstones;
   changed();
 }
@@ -280,8 +316,8 @@ export async function applySnapshot(data) {
 // ---------- Varnostna kopija in brisanje ----------
 
 export function exportData() {
-  const { transactions, categories, rules, recurring } = state;
-  return { app: 'stroski', version: 1, exportedAt: new Date().toISOString(), transactions, categories, rules, recurring };
+  const { transactions, categories, rules, recurring, work, settings } = state;
+  return { app: 'stroski', version: 1, exportedAt: new Date().toISOString(), transactions, categories, rules, recurring, work, settings };
 }
 
 /** Obnovi kopijo: obnovljeni zapisi postanejo najnovejši, vse ostalo se izbriše (tudi na drugih napravah). */
@@ -295,6 +331,8 @@ export async function importData(data) {
     categories: data.categories.map(c => ({ ...c, updatedAt: now })),
     rules: (data.rules ?? []).map(r => ({ ...r, updatedAt: now })),
     recurring: (data.recurring ?? []).map(r => ({ ...r, updatedAt: now })),
+    work: (data.work ?? []).map(r => ({ ...r, updatedAt: now })),
+    settings: (data.settings ?? []).map(r => ({ ...r, updatedAt: now })),
   };
   for (const s of SYNCED_STORES) {
     const keep = new Set(restored[s].map(r => r.id));
@@ -311,8 +349,9 @@ export async function clearAll() {
   for (const t of state.transactions) state.tombstones.transactions[t.id] = now;
   for (const r of state.rules) state.tombstones.rules[r.id] = now;
   for (const s of state.recurring) state.tombstones.recurring[s.id] = now;
+  for (const w of state.work) state.tombstones.work[w.id] = now;
   for (const c of state.categories) if (!DEFAULT_IDS.has(c.id)) state.tombstones.categories[c.id] = now;
   const categories = DEFAULT_CATEGORIES.map((c, order) => ({ ...c, order, updatedAt: now }));
-  await applySnapshot({ transactions: [], categories, rules: [], recurring: [], tombstones: state.tombstones });
+  await applySnapshot({ transactions: [], categories, rules: [], recurring: [], work: [], settings: state.settings, tombstones: state.tombstones });
   document.dispatchEvent(new CustomEvent('local-change'));
 }

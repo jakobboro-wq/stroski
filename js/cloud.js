@@ -111,6 +111,34 @@ export async function createVault(payload) {
   }
 }
 
+// ---------- Samodejno beleženje ur (dogodki s telefona) ----------
+
+/** Shrani odtis ključa, s katerim telefon vpisuje prihode/odhode. */
+export async function setWorkToken(tokenHash) {
+  await request('/rest/v1/work_tokens?on_conflict=user_id', {
+    method: 'POST',
+    body: { user_id: session.user.id, token_hash: tokenHash },
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+  });
+}
+
+/** Neprevzeti dogodki; prazen seznam, če tabela še ne obstaja. */
+export async function getWorkEvents() {
+  try {
+    return await request('/rest/v1/work_events?select=id,kind,at&order=at.asc');
+  } catch (err) {
+    if (err.status === 404 || err.code === 'PGRST205' || err.code === '42P01') return [];
+    throw err;
+  }
+}
+
+export async function deleteWorkEvents(ids) {
+  if (ids.length) await request(`/rest/v1/work_events?id=in.(${ids.join(',')})`, { method: 'DELETE' });
+}
+
+export const workEventUrl = () => `${SUPABASE_URL}/rest/v1/rpc/log_work_event`;
+export const publishableKey = () => SUPABASE_KEY;
+
 /** Posodobi samo, če je verzija v oblaku še vedno `version`. Vrne false ob sočasni spremembi z druge naprave. */
 export async function updateVault(version, payload) {
   const rows = await request(`/rest/v1/vault?user_id=eq.${session.user.id}&version=eq.${version}`, {

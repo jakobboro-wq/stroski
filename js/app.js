@@ -6,10 +6,12 @@ import { renderOverview } from './views/overview.js';
 import { renderTransactions } from './views/transactions.js';
 import { renderImport } from './views/import.js';
 import { renderSettings } from './views/settings.js';
+import { renderWork } from './views/work.js';
 
 const routes = {
   pregled: renderOverview,
   transakcije: renderTransactions,
+  ure: renderWork,
   uvoz: renderImport,
   nastavitve: renderSettings,
 };
@@ -39,7 +41,11 @@ const checkRecurring = () => {
 document.getElementById('addBtn').addEventListener('click', () => openTxDialog());
 window.addEventListener('hashchange', render);
 document.addEventListener('data-changed', () => { render(); checkRecurring(); });
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkRecurring(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  checkRecurring();
+  if (location.hash.startsWith('#/ure')) render(); // osveži »v službi že X h«
+});
 
 await load();
 await generateRecurring(todayISO());

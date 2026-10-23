@@ -1,13 +1,13 @@
 // Service worker: aplikacija deluje tudi brez povezave.
 // Najprej poskusi omrežje (da dobiš novo verzijo), ob izpadu uporabi shranjeno kopijo.
 
-const CACHE = 'stroski-v7';
+const CACHE = 'stroski-v8';
 const SHELL = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/app.js', 'js/store.js', 'js/db.js', 'js/categorize.js', 'js/csv.js', 'js/xlsx.js', 'js/stats.js',
   'js/charts.js', 'js/ui.js', 'js/dialog.js', 'js/demo.js',
-  'js/category-ui.js', 'js/recurring.js', 'js/config.js', 'js/crypto.js', 'js/cloud.js', 'js/merge.js', 'js/sync.js',
+  'js/category-ui.js', 'js/recurring.js', 'js/work.js', 'js/views/work.js', 'js/config.js', 'js/crypto.js', 'js/cloud.js', 'js/merge.js', 'js/sync.js',
   'js/views/overview.js', 'js/views/transactions.js', 'js/views/import.js', 'js/views/settings.js', 'js/views/sync-card.js',
 ];
 

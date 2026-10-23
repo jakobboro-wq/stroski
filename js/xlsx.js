@@ -53,16 +53,8 @@ function columnIndex(ref) {
   return n - 1;
 }
 
-export async function readXlsx(buffer) {
-  const read = await unzip(buffer);
-  const shared = [...((await read('xl/sharedStrings.xml')) ?? '').matchAll(/<si>([\s\S]*?)<\/si>/g)].map(m => textOf(m[1]));
-
-  // Prvi list: pot preberemo iz workbook.xml.rels, privzeto sheet1.xml
-  const rels = (await read('xl/_rels/workbook.xml.rels')) ?? '';
-  const target = rels.match(/Target="\/?(?:xl\/)?(worksheets\/[^"]+)"/)?.[1] ?? 'worksheets/sheet1.xml';
-  const sheet = await read(`xl/${target}`);
-  if (!sheet) throw new Error('V Excel datoteki ni lista s podatki.');
-
+/** Vrstice lista kot tabela besedil; stolpec A je indeks 0. Formule vrnejo shranjeno (izračunano) vrednost. */
+function parseSheet(sheet, shared) {
   const rows = [];
   for (const [, rowXml] of sheet.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)) {
     const row = [];
@@ -78,6 +70,36 @@ export async function readXlsx(buffer) {
     }
     rows.push(Array.from(row, c => c ?? ''));
   }
+  return rows;
+}
+
+async function openWorkbook(buffer) {
+  const read = await unzip(buffer);
+  const shared = [...((await read('xl/sharedStrings.xml')) ?? '').matchAll(/<si>([\s\S]*?)<\/si>/g)].map(m => textOf(m[1]));
+  const rels = (await read('xl/_rels/workbook.xml.rels')) ?? '';
+  const targets = new Map([...rels.matchAll(/<Relationship\s[^>]*>/g)].map(([tag]) => [
+    tag.match(/Id="([^"]+)"/)?.[1],
+    tag.match(/Target="\/?(?:xl\/)?([^"]+)"/)?.[1],
+  ]));
+  const workbook = (await read('xl/workbook.xml')) ?? '';
+  const sheets = [...workbook.matchAll(/<sheet\s[^>]*>/g)].map(([tag]) => ({
+    name: unescapeXml(tag.match(/name="([^"]+)"/)?.[1] ?? ''),
+    path: `xl/${targets.get(tag.match(/r:id="([^"]+)"/)?.[1]) ?? 'worksheets/sheet1.xml'}`,
+  }));
+  return { read, shared, sheets };
+}
+
+/** Vsi listi: [{ name, rows }] */
+export async function readXlsxSheets(buffer) {
+  const { read, shared, sheets } = await openWorkbook(buffer);
+  return Promise.all(sheets.map(async s => ({ name: s.name, rows: parseSheet((await read(s.path)) ?? '', shared) })));
+}
+
+export async function readXlsx(buffer) {
+  const { read, shared, sheets } = await openWorkbook(buffer);
+  const sheet = await read(sheets[0]?.path ?? 'xl/worksheets/sheet1.xml');
+  if (!sheet) throw new Error('V Excel datoteki ni lista s podatki.');
+  const rows = parseSheet(sheet, shared);
 
   // Revolut zapiše vsako CSV vrstico v en sam stolpec — v tem primeru jo razčlenimo kot CSV.
   const head = rows[0] ?? [];

@@ -1,7 +1,7 @@
 // Združevanje podatkov dveh naprav. Vsak zapis ima id in updatedAt; novejši zmaga.
 // Izbrisi so zapisani kot »nagrobniki« (tombstones), da se izbrisan zapis ne vrne z druge naprave.
 
-export const SYNCED_STORES = ['transactions', 'categories', 'rules', 'recurring'];
+export const SYNCED_STORES = ['transactions', 'categories', 'rules', 'recurring', 'work', 'settings'];
 
 export function mergeData(a, b, now = Date.now()) {
   const tombstones = {};

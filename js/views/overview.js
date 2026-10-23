@@ -3,6 +3,7 @@ import { normalize } from '../categorize.js';
 import { buildIndex, addMonths, average, spendOf, incomeOf, variableOf, daysInMonth } from '../stats.js';
 import { EVERY, occurrencesBetween, amountInMonth, nextOccurrence } from '../recurring.js';
 import { openTxDialog } from '../dialog.js';
+import { workMonthNet } from './work.js';
 
 const dayShort = iso => { const [, m, d] = iso.split('-'); return `${+d}. ${+m}.`; };
 import { columnChart } from '../charts.js';
@@ -141,6 +142,7 @@ export function renderOverview(view, params) {
   }
 
   const balance = income - spend;
+  const workNet = workMonthNet(month);
 
   view.innerHTML = `
     <header class="page-head month-head">
@@ -159,10 +161,11 @@ export function renderOverview(view, params) {
       ${projection ? `<p class="muted small">Napoved do konca meseca: približno <b>${money0(projection)}</b>${upcomingFixed > 0 ? ` (od tega še ${money0(upcomingFixed)} ponavljajočih stroškov)` : ''}.</p>` : ''}
     </section>
 
-    <div class="tiles">
+    <div class="tiles${workNet ? ' four' : ''}">
       <div class="tile"><div class="tile-label">Prihodki</div><div class="tile-value">${money(income)}</div></div>
       <div class="tile"><div class="tile-label">Bilanca</div><div class="tile-value ${balance >= 0 ? 'good' : 'bad'}">${signedMoney(balance)}</div></div>
       <div class="tile"><div class="tile-label">Povprečno na dan</div><div class="tile-value">${money(spend / daysCounted)}</div></div>
+      ${workNet ? `<a class="tile tile-link" href="#/ure?m=${month}"><div class="tile-label">Zaslužek iz ur (neto)</div><div class="tile-value good">${money(workNet)}</div></a>` : ''}
     </div>
 
     ${uncategorized ? `<a class="card hint" href="#/transakcije?m=${month}&c=other">📦 ${plural(uncategorized, TX_FORMS)} v kategoriji »Ostalo« · <b>razvrsti</b> in aplikacija si bo zapomnila →</a>` : ''}

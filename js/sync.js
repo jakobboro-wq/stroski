@@ -4,7 +4,8 @@ import * as db from './db.js';
 import * as cloud from './cloud.js';
 import { deriveKey, newSalt, saltOf, encryptJSON, decryptJSON } from './crypto.js';
 import { mergeData, signature } from './merge.js';
-import { snapshot, applySnapshot } from './store.js';
+import { state, snapshot, applySnapshot, saveWork, getSetting } from './store.js';
+import { applyEvents, DEFAULT_PAY } from './work.js';
 
 // status: off | login | password | idle | syncing | error
 export const sync = { status: 'off', lastSync: null, error: null, email: null };
@@ -67,6 +68,9 @@ export async function syncNow() {
       const saved = remote ? await cloud.updateVault(remote.version, payload) : await cloud.createVault(payload);
       if (saved) break; // sicer je druga naprava ravno shranila — ponovi z novo verzijo
     }
+    // Po prenosu (da so znani vsi dnevi z drugih naprav) prevzemi prihode/odhode s telefona;
+    // sprememba sproži novo sinhronizacijo, ki jih naloži.
+    await takeWorkEvents();
     sync.lastSync = Date.now();
     await db.put('meta', { key: 'lastSync', value: sync.lastSync });
     setStatus('idle');
@@ -78,6 +82,16 @@ export async function syncNow() {
     running = false;
     if (again) { again = false; schedule(500); }
   }
+}
+
+/** Prihode/odhode, ki jih je zapisal telefon, pretvori v delovne dni in jih izbriše iz baze. */
+async function takeWorkEvents() {
+  const events = await cloud.getWorkEvents();
+  if (!events.length) return;
+  const pay = getSetting('pay', DEFAULT_PAY);
+  const changedDays = applyEvents(state.work, events, pay.rounding);
+  if (changedDays.length) await saveWork(changedDays);
+  await cloud.deleteWorkEvents(events.map(e => e.id));
 }
 
 // ---------- Dejanja iz nastavitev ----------
