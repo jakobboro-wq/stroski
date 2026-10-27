@@ -34,9 +34,9 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
         <span>Ure</span>
       </a>
-      <a href="#/uvoz" data-route="uvoz">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></svg>
-        <span>Uvoz</span>
+      <a href="#/premozenje" data-route="premozenje">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10l9-6 9 6M5 10v9h14v-9M9 19v-5h6v5"/></svg>
+        <span>Premoženje</span>
       </a>
       <a href="#/nastavitve" data-route="nastavitve">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
@@ -109,6 +109,22 @@
       </div>
       <footer class="sheet-foot">
         <button type="button" class="btn danger ghost" id="workDelete" hidden>Izbriši</button>
+        <button type="submit" class="btn primary">Shrani</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="assetDialog" class="sheet">
+    <form id="assetForm" novalidate>
+      <header class="sheet-head">
+        <h2 id="assetTitle">Dodaj premoženje</h2>
+        <button type="button" class="icon-btn" id="assetClose" aria-label="Zapri">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </header>
+      <div class="sheet-body" id="assetFields"></div>
+      <footer class="sheet-foot">
+        <button type="button" class="btn danger ghost" id="assetDelete" hidden>Izbriši</button>
         <button type="submit" class="btn primary">Shrani</button>
       </footer>
     </form>

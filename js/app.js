@@ -7,11 +7,13 @@ import { renderTransactions } from './views/transactions.js';
 import { renderImport } from './views/import.js';
 import { renderSettings } from './views/settings.js';
 import { renderWork } from './views/work.js';
+import { renderAssets } from './views/assets.js';
 
 const routes = {
   pregled: renderOverview,
   transakcije: renderTransactions,
   ure: renderWork,
+  premozenje: renderAssets,
   uvoz: renderImport,
   nastavitve: renderSettings,
 };

@@ -494,6 +494,36 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .copy-row .btn { min-height: 36px; }
 .link-btn { padding: 0; border: 0; background: none; color: var(--accent-ink); font: inherit; text-decoration: underline; cursor: pointer; }
 
+/* ---------- Premoženje ---------- */
+.page-head.spread { justify-content: space-between; }
+.hero-value.bad, .tx-amt.bad { color: var(--bad); }
+.asset-list { display: grid; }
+.asset-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: calc(100% + 16px);
+  padding: 10px 8px;
+  margin: 0 -8px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.asset-row:hover { background: var(--surface-2); }
+.asset-row .tx-main { gap: 2px; }
+.asset-row .tx-meta { white-space: normal; }
+.value-bar { display: block; height: 6px; margin-top: 4px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.value-bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+.value-bar.debt i { background: var(--good); }
+.horizon { display: grid; gap: 2px; margin-bottom: 10px; font-variant-numeric: tabular-nums; }
+.h-row { display: grid; grid-template-columns: 1.2fr 1fr 1fr 1fr; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); text-align: right; }
+.h-row > :first-child { text-align: left; color: var(--ink-2); }
+.h-head { font-size: 12px; color: var(--muted); border-bottom: 0; padding-bottom: 0; }
+
 /* ---------- Sinhronizacija ---------- */
 .sync-form { display: grid; gap: 12px; max-width: 420px; }
 .form-error { color: var(--bad); font-size: 14px; margin: 8px 0; }

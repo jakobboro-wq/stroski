@@ -3,7 +3,7 @@ import { categoryOptions } from '../category-ui.js';
 import { normalize } from '../categorize.js';
 import { monthOf } from '../stats.js';
 import { openTxDialog } from '../dialog.js';
-import { esc, money, signedMoney, monthLabel, dayLabel, plural, TX_FORMS } from '../ui.js';
+import { esc, money, signedMoney, monthLabel, dayLabel, plural, TX_FORMS, icons } from '../ui.js';
 
 const PAGE = 200;
 
@@ -13,7 +13,7 @@ export function renderTransactions(view, params) {
   let limit = PAGE;
 
   view.innerHTML = `
-    <header class="page-head"><h1>Transakcije</h1></header>
+    <header class="page-head spread"><h1>Transakcije</h1><a class="btn" href="#/uvoz">${icons.upload} Uvozi izpisek</a></header>
     <div class="filters">
       <input type="search" id="fq" placeholder="Išči po opisu, kategoriji …" value="${esc(filters.q)}" aria-label="Iskanje">
       <select id="fm" aria-label="Mesec">
