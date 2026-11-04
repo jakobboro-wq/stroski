@@ -4,6 +4,7 @@ import { state, saveAsset, deleteAsset } from '../store.js';
 import { ASSET_TYPES, DEBT_TYPES, METHODS, assetValue, lossNextYear, debtBalance, payoff, totals, addYears } from '../assets.js';
 import { parseNumber } from '../csv.js';
 import { renderInvestCard, investmentsToday, investmentsInYears } from './invest.js';
+import { renderStockCard, stocksToday } from './stocks.js';
 import { esc, money, money0, todayISO, ask, toast } from '../ui.js';
 
 const num = (v, d = 2) => (v == null || v === '' || Number.isNaN(v) ? '' : Number(v).toLocaleString('sl-SI', { maximumFractionDigits: d, useGrouping: false }));
@@ -16,10 +17,12 @@ export function renderAssets(view) {
   const debts = state.assets.filter(x => x.kind === 'debt').map(d => ({ d, balance: debtBalance(d, today), pay: payoff(d, today) })).sort((x, y) => y.balance - x.balance);
   // Naložbe štejejo v premoženje: danes po trenutni vrednosti, v napovedi po pričakovanem donosu.
   const withInvest = (x, inv) => ({ ...x, assets: x.assets + inv, net: x.net + inv });
-  const invested = investmentsToday(today);
+  // Delnice nimajo predpostavljenega donosa, zato v napovedi ostanejo pri trenutni vrednosti.
+  const stocks = stocksToday();
+  const invested = investmentsToday(today) + stocks;
   const t = withInvest(totals(state.assets, today), invested);
   const yearlyLoss = assets.reduce((s, r) => s + lossNextYear(r.a, today), 0);
-  const horizon = [1, 2, 3, 5].map(n => ({ n, ...withInvest(totals(state.assets, addYears(today, n)), investmentsInYears(today, n)) }));
+  const horizon = [1, 2, 3, 5].map(n => ({ n, ...withInvest(totals(state.assets, addYears(today, n)), investmentsInYears(today, n) + stocks) }));
   const hasInvest = state.investments.length > 0;
 
   view.innerHTML = `
@@ -32,6 +35,8 @@ export function renderAssets(view) {
     </section>
 
     <section class="card" id="investCard"></section>
+
+    <section class="card" id="stockCard"></section>
 
     <div class="two-col">
       <section class="card">
@@ -82,10 +87,11 @@ export function renderAssets(view) {
         <div class="h-row"><span>Danes</span><span>${money0(t.assets)}</span><span>${money0(t.debts)}</span><b>${money0(t.net)}</b></div>
         ${horizon.map(h => `<div class="h-row"><span>Čez ${h.n} ${h.n === 1 ? 'leto' : h.n === 2 ? 'leti' : h.n < 5 ? 'leta' : 'let'}</span><span>${money0(h.assets)}</span><span>${money0(h.debts)}</span><b>${money0(h.net)}</b></div>`).join('')}
       </div>
-      <p class="muted small">Upošteva amortizacijo stvari in odplačevanje dolgov. Ročno vpisane vrednosti ostanejo enake – posodobi jih, ko se spremenijo.${hasInvest ? ' Naložbe rastejo po predpostavljenem donosu iz kartice Vlaganje, kar ni zagotovilo.' : ''}</p>
+      <p class="muted small">Upošteva amortizacijo stvari in odplačevanje dolgov. Ročno vpisane vrednosti ostanejo enake – posodobi jih, ko se spremenijo.${hasInvest ? ' Naložbe rastejo po predpostavljenem donosu iz kartice Vlaganje, kar ni zagotovilo. Delnice ostanejo pri trenutni vrednosti.' : ''}</p>
     </section>` : ''}`;
 
   renderInvestCard(view.querySelector('#investCard'));
+  renderStockCard(view.querySelector('#stockCard'));
 
   view.querySelectorAll('[data-new]').forEach(btn => btn.addEventListener('click', () => openAssetDialog(null, btn.dataset.new)));
   view.querySelectorAll('.asset-row').forEach(row => row.addEventListener('click', () => openAssetDialog(state.assets.find(x => x.id === row.dataset.id))));

@@ -11,7 +11,7 @@ export const BASE_CURRENCY = 'EUR';
 // recurring: ponavljajoči stroški/prihodki (predloge, iz katerih nastajajo transakcije)
 // work: delovni dnevi (prihod/odhod), settings: nastavitve, ki se sinhronizirajo (npr. obračun ur)
 // assets: premoženje (kind 'asset') in dolgovi (kind 'debt')
-// investments: naložbe (kind 'fund') in vplačila vanje (kind 'deposit')
+// investments: naložbe (kind 'fund') in vplačila vanje (kind 'deposit'), delnice (kind 'stock') ter njihovi nakupi in prodaje (kind 'trade')
 export const state = { transactions: [], categories: [], rules: [], recurring: [], work: [], settings: [], assets: [], investments: [], tombstones: emptyTombstones() };
 
 const uid = () => crypto.randomUUID?.() ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;

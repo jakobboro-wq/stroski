@@ -449,8 +449,8 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .sub-row .tx-meta { white-space: normal; }
 .sub-actions { display: flex; gap: 6px; margin-left: auto; }
 .sub-actions .btn { min-height: 36px; padding: 0 12px; font-size: 14px; }
-.link-btn { padding: 0; border: 0; background: none; color: var(--accent-ink); font: inherit; font-size: 13px; cursor: pointer; }
-.link-btn:hover { text-decoration: underline; }
+.sub-summary b.good { color: var(--good); }
+.sub-summary b.bad { color: var(--bad); }
 
 /* ---------- Ure ---------- */
 .tiles.four { grid-template-columns: repeat(2, 1fr); }
@@ -540,7 +540,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .h-head { font-size: 12px; color: var(--muted); border-bottom: 0; padding-bottom: 0; }
 
 /* ---------- Vlaganje ---------- */
-.fund-list { display: grid; margin-bottom: 4px; }
+.fund-list { display: grid; grid-template-columns: minmax(0, 1fr); margin-bottom: 4px; }
 .fund-row, .deposit-row {
   display: flex;
   align-items: center;
@@ -583,7 +583,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .chart .end { fill: var(--ink); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .chart .cross line { stroke: var(--axis); stroke-width: 1; }
 .sub-head { margin: 16px 0 6px; font-size: 14px; font-weight: 600; }
-.deposit-list { display: grid; }
+.deposit-list { display: grid; grid-template-columns: minmax(0, 1fr); }
 .deposit-row { justify-content: space-between; padding: 6px 8px; font-size: 14px; }
 .deposit-row .muted { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .deposit-row b { font-variant-numeric: tabular-nums; }

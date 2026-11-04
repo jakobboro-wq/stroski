@@ -146,6 +146,22 @@
     </form>
   </dialog>
 
+  <dialog id="stockDialog" class="sheet">
+    <form id="stockForm" novalidate>
+      <header class="sheet-head">
+        <h2 id="stockTitle">Nakup ali prodaja</h2>
+        <button type="button" class="icon-btn" id="stockClose" aria-label="Zapri">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </header>
+      <div class="sheet-body" id="stockFields"></div>
+      <footer class="sheet-foot">
+        <button type="button" class="btn danger ghost" id="stockDelete" hidden>Izbriši</button>
+        <button type="submit" class="btn primary">Shrani</button>
+      </footer>
+    </form>
+  </dialog>
+
   <dialog id="askDialog" class="ask">
     <form method="dialog">
       <p></p>
