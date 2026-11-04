@@ -1,6 +1,6 @@
 // Kartica »Delnice« na zavihku Premoženje: nakupi in prodaje posameznih delnic.
 
-import { state, saveInvestment, deleteInvestments } from '../store.js';
+import { state, saveInvestment, deleteInvestments, linkTradeTransactions, removeTradeTransactions } from '../store.js';
 import { position, stockValue, portfolio } from '../stocks.js';
 import { parseNumber } from '../csv.js';
 import { esc, money, signedMoney, plural, todayISO, ask, toast } from '../ui.js';
@@ -65,7 +65,7 @@ export function renderStockCard(el) {
           <span class="fund-amt">${side}</span>
         </button>`;
     }).join('')}</div>
-    <p class="muted small">Tapni delnico, da vpišeš trenutno vrednost z Revoluta. Ena delnica lahko izgubi večino ali vso vrednost.</p>
+    <p class="muted small">Tapni delnico, da vpišeš trenutno vrednost z Revoluta. Nakupi in prodaje so med transakcijami kot prenosi, zato ne štejejo v porabo. Ena delnica lahko izgubi večino ali vso vrednost.</p>
 
     <h3 class="sub-head">Nakupi in prodaje</h3>
     <div class="deposit-list">${(showAll ? list : list.slice(0, 5)).map(t => `
@@ -172,7 +172,8 @@ async function saveTrade(f) {
 
   dlg.close();
   const stock = known ?? await stockByName(name);
-  await saveInvestment({ ...next, stockId: stock.id });
+  const saved = await saveInvestment({ ...next, stockId: stock.id });
+  await linkTradeTransactions([saved]);
   toast('Shranjeno');
 }
 
@@ -193,6 +194,7 @@ async function saveStock(f) {
   }
   dlg.close();
   await saveInvestment(next);
+  if (name !== editing.name) await linkTradeTransactions(tradesOf(next.id));
   toast('Shranjeno');
 }
 
@@ -210,6 +212,7 @@ removeBtn.addEventListener('click', async () => {
     const own = tradesOf(item.id);
     if (await ask(`Izbrišem delnico »${item.name}« in vse njene vnose (${own.length})?`, { yes: 'Izbriši', danger: true })) {
       await deleteInvestments([item.id, ...own.map(t => t.id)]);
+      await removeTradeTransactions(own.map(t => t.id));
       toast('Izbrisano');
     }
     return;
@@ -219,6 +222,7 @@ removeBtn.addEventListener('click', async () => {
   if (await ask(`Izbrišem ta vnos z dne ${fmtDay(item.date)}?`, { yes: 'Izbriši', danger: true })) {
     // Zadnji vnos odstrani tudi delnico, da na seznamu ne ostane prazna vrstica.
     await deleteInvestments(others.length ? [item.id] : [item.id, item.stockId]);
+    await removeTradeTransactions([item.id]);
     toast('Izbrisano');
   }
 });

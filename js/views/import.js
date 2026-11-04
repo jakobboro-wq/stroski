@@ -1,4 +1,5 @@
-import { state, allRules, saveTransactions, addRule, linkToSubscriptions, BASE_CURRENCY } from '../store.js';
+import { state, allRules, kindOf, saveTransactions, addRule, linkToSubscriptions, BASE_CURRENCY } from '../store.js';
+import { sameMoneyMove } from '../stocks.js';
 import { parseCSV, detectColumns, rowsToTransactions, COLUMN_FIELDS } from '../csv.js';
 import { readXlsx, isXlsx } from '../xlsx.js';
 import { categoryOptions } from '../category-ui.js';
@@ -65,8 +66,12 @@ function compute() {
   if (missing.length) { session.result = null; return; }
   const result = rowsToTransactions(session.rows, session.mapping, allRules(), BASE_CURRENCY);
   const existing = new Set(state.transactions.map(t => t.importHash).filter(Boolean));
-  result.fresh = result.items.filter(i => !existing.has(i.importHash));
-  result.dupes = result.items.length - result.fresh.length;
+  const notImported = result.items.filter(i => !existing.has(i.importHash));
+  result.dupes = result.items.length - notImported.length;
+  // Prenos v izpisku, ki je že vnesen kot nakup ali prodaja delnice. Samo prenosi: pravi strošek se ne sme izgubiti.
+  const stockMoves = state.transactions.filter(t => t.source === 'stock');
+  result.fresh = notImported.filter(i => !(kindOf(i.categoryId) === 'transfer' && stockMoves.some(t => sameMoneyMove(t, i))));
+  result.stockDupes = notImported.length - result.fresh.length;
   session.result = result;
 }
 
@@ -92,10 +97,11 @@ function drawPreview(view) {
 
   let body = '';
   if (result) {
-    const { fresh, dupes, skipped } = result;
+    const { fresh, dupes, stockDupes, skipped } = result;
     const dates = fresh.map(t => t.date).sort();
     const skippedNotes = [
       dupes && `${plural(dupes, TX_FORMS)} že uvoženih`,
+      stockDupes && `že vneseno pri delnicah: ${stockDupes}`,
       skipped.pending && `${skipped.pending} še v obdelavi (uvozi jih kasneje)`,
       skipped.failed && `${skipped.failed} zavrnjenih ali preklicanih`,
       skipped.invalid && `${skipped.invalid} neveljavnih vrstic`,

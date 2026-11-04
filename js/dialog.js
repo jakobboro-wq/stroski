@@ -88,6 +88,12 @@ function lastAccount() {
 }
 
 export function openTxDialog(tx = null) {
+  // Prenos za delnico sledi vnosu pri delnici, zato se ureja tam (sicer bi se številki razšli).
+  if (tx?.source === 'stock') {
+    location.hash = '#/premozenje';
+    toast('Nakup ali prodajo urediš pri delnicah.');
+    return;
+  }
   editing = tx;
   form.reset();
   const kind = tx ? kindOf(tx.categoryId) : 'expense';

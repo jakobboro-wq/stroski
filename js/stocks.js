@@ -40,6 +40,30 @@ export function position(trades) {
   return { shares, cost, average: shares > EPS ? cost / shares : null, realized, oversold };
 }
 
+/** Id je določen z vnosom, zato dve napravi ne ustvarita dvojnikov. */
+export const tradeTxId = tradeId => `trade:${tradeId}`;
+
+/** Nakup ali prodaja kot transakcija: prenos, ki ne šteje v porabo, ker se denar le premakne v delnice in nazaj. */
+export const tradeTransaction = (trade, stockName) => ({
+  id: tradeTxId(trade.id),
+  tradeId: trade.id,
+  date: trade.date,
+  amount: trade.side === 'buy' ? -trade.amount : trade.amount,
+  currency: 'EUR',
+  description: `${trade.side === 'buy' ? 'Nakup' : 'Prodaja'} delnice: ${stockName}`,
+  account: 'Revolut',
+  categoryId: 'transfer',
+  categorySource: 'manual',
+  source: 'stock',
+});
+
+const dayNumber = iso => Date.parse(`${iso}T00:00:00Z`) / 86400000;
+
+/** Isti premik denarja: enak znesek in valuta ter datum največ 3 dni narazen (izpisek ga lahko knjiži kasneje). */
+export const sameMoneyMove = (a, b) => a.currency === b.currency
+  && Math.abs(a.amount - b.amount) < 0.005
+  && Math.abs(dayNumber(a.date) - dayNumber(b.date)) <= 3;
+
 /** Vrednost kosov po zadnji vpisani ceni. Brez vpisane cene se šteje nabavna vrednost. */
 export function stockValue(stock, pos) {
   if (pos.shares <= EPS) return 0;

@@ -6,6 +6,7 @@ import { DEFAULT_CATEGORIES, CATEGORIES_VERSION, OLD_DEFAULT_NAMES, RULES_VERSIO
 import { SYNCED_STORES } from './merge.js';
 import { dueTransactions } from './recurring.js';
 import { matchSeries } from './subscriptions.js';
+import { tradeTransaction, tradeTxId, sameMoneyMove } from './stocks.js';
 
 export const BASE_CURRENCY = 'EUR';
 // recurring: ponavljajoči stroški/prihodki (predloge, iz katerih nastajajo transakcije)
@@ -326,6 +327,39 @@ export async function deleteInvestments(ids) {
   state.investments = state.investments.filter(i => !set.has(i.id));
   await Promise.all([db.removeMany('investments', ids), bury('investments', ids)]);
   localChange();
+}
+
+// ---------- Prenosi za nakupe in prodaje delnic ----------
+
+const stockTx = trade => tradeTransaction(trade, state.investments.find(x => x.id === trade.stockId)?.name ?? '');
+/** Izpisek je ta premik denarja že prinesel kot prenos, zato drugega ne dodajamo. */
+const alreadyImported = tx => state.transactions.some(t => t.source === 'csv' && kindOf(t.categoryId) === 'transfer' && sameMoneyMove(t, tx));
+
+/** Ustvari ali posodobi prenose za te vnose (po shranjevanju ali preimenovanju delnice). */
+export async function linkTradeTransactions(trades) {
+  const fresh = [];
+  for (const trade of trades) {
+    const tx = stockTx(trade);
+    const existing = state.transactions.find(t => t.id === tx.id);
+    if (existing) fresh.push({ ...existing, ...tx });
+    else if (!alreadyImported(tx)) fresh.push(tx);
+  }
+  if (fresh.length) await saveTransactions(fresh);
+}
+
+export async function removeTradeTransactions(tradeIds) {
+  const ids = tradeIds.map(tradeTxId).filter(id => state.transactions.some(t => t.id === id));
+  if (ids.length) await deleteTransactions(ids);
+}
+
+/** Doda manjkajoče prenose, npr. za vnose, narejene pred to funkcijo ali na stari verziji aplikacije. */
+export async function ensureTradeTransactions() {
+  const existing = new Set(state.transactions.map(t => t.id));
+  const fresh = state.investments
+    .filter(x => x.kind === 'trade')
+    .map(stockTx)
+    .filter(t => !existing.has(t.id) && !state.tombstones.transactions[t.id] && !alreadyImported(t));
+  if (fresh.length) await saveTransactions(fresh);
 }
 
 export const getSetting = (id, fallback = {}) => ({ ...fallback, ...state.settings.find(s => s.id === id) });

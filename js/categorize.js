@@ -148,7 +148,7 @@ export function guessCategory({ description, amount, type = '', product = '' }, 
   if (own) return { categoryId: own.categoryId, source: 'rule' };
 
   if (t === 'TRANSFER') {
-    if (/savings|vault|pocket|varcev|trezor|flexible account|investment|portfolio/.test(desc)) return { categoryId: 'transfer', source: 'default' };
+    if (/savings|vault|pocket|varcev|trezor|flexible account|investment|portfolio|trading|brokerage|revolut securities/.test(desc)) return { categoryId: 'transfer', source: 'default' };
     // Revolut: »To X« / »From X« so tvoji računi in žepi, »Transfer to X« / »Payment from X« pa drugi ljudje.
     if (/^(to|from) /.test(desc)) return { categoryId: 'transfer', source: 'default' };
   }

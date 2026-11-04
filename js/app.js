@@ -1,4 +1,4 @@
-import { load, generateRecurring } from './store.js';
+import { load, generateRecurring, ensureTradeTransactions } from './store.js';
 import { openTxDialog } from './dialog.js';
 import { hideTip, todayISO } from './ui.js';
 import { initSync } from './sync.js';
@@ -37,7 +37,10 @@ function render() {
 let recurringTimer;
 const checkRecurring = () => {
   clearTimeout(recurringTimer);
-  recurringTimer = setTimeout(() => generateRecurring(todayISO()), 800);
+  recurringTimer = setTimeout(async () => {
+    await generateRecurring(todayISO());
+    await ensureTradeTransactions();
+  }, 800);
 };
 
 document.getElementById('addBtn').addEventListener('click', () => openTxDialog());
@@ -51,6 +54,7 @@ document.addEventListener('visibilitychange', () => {
 
 await load();
 await generateRecurring(todayISO());
+await ensureTradeTransactions();
 render();
 initSync();
 
