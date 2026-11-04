@@ -3,6 +3,7 @@
 import { state, saveAsset, deleteAsset } from '../store.js';
 import { ASSET_TYPES, DEBT_TYPES, METHODS, assetValue, lossNextYear, debtBalance, payoff, totals, addYears } from '../assets.js';
 import { parseNumber } from '../csv.js';
+import { renderInvestCard, investmentsToday, investmentsInYears } from './invest.js';
 import { esc, money, money0, todayISO, ask, toast } from '../ui.js';
 
 const num = (v, d = 2) => (v == null || v === '' || Number.isNaN(v) ? '' : Number(v).toLocaleString('sl-SI', { maximumFractionDigits: d, useGrouping: false }));
@@ -13,9 +14,13 @@ export function renderAssets(view) {
   const today = todayISO();
   const assets = state.assets.filter(x => x.kind !== 'debt').map(a => ({ a, value: assetValue(a, today) })).sort((x, y) => y.value - x.value);
   const debts = state.assets.filter(x => x.kind === 'debt').map(d => ({ d, balance: debtBalance(d, today), pay: payoff(d, today) })).sort((x, y) => y.balance - x.balance);
-  const t = totals(state.assets, today);
+  // Naložbe štejejo v premoženje: danes po trenutni vrednosti, v napovedi po pričakovanem donosu.
+  const withInvest = (x, inv) => ({ ...x, assets: x.assets + inv, net: x.net + inv });
+  const invested = investmentsToday(today);
+  const t = withInvest(totals(state.assets, today), invested);
   const yearlyLoss = assets.reduce((s, r) => s + lossNextYear(r.a, today), 0);
-  const horizon = [1, 2, 3, 5].map(n => ({ n, ...totals(state.assets, addYears(today, n)) }));
+  const horizon = [1, 2, 3, 5].map(n => ({ n, ...withInvest(totals(state.assets, addYears(today, n)), investmentsInYears(today, n)) }));
+  const hasInvest = state.investments.length > 0;
 
   view.innerHTML = `
     <header class="page-head"><h1>Premoženje</h1></header>
@@ -23,8 +28,10 @@ export function renderAssets(view) {
     <section class="card hero">
       <div class="hero-label">Neto premoženje</div>
       <div class="hero-value ${t.net < 0 ? 'bad' : ''}">${money(t.net)}</div>
-      <p class="muted small">Premoženje <b>${money(t.assets)}</b> − dolgovi <b>${money(t.debts)}</b>${yearlyLoss > 0 ? ` · stvari izgubijo približno <b>${money0(yearlyLoss)}</b> vrednosti na leto` : ''}</p>
+      <p class="muted small">Premoženje <b>${money(t.assets)}</b>${invested > 0 ? ` (od tega naložbe ${money(invested)})` : ''} − dolgovi <b>${money(t.debts)}</b>${yearlyLoss > 0 ? ` · stvari izgubijo približno <b>${money0(yearlyLoss)}</b> vrednosti na leto` : ''}</p>
     </section>
+
+    <section class="card" id="investCard"></section>
 
     <div class="two-col">
       <section class="card">
@@ -67,7 +74,7 @@ export function renderAssets(view) {
       </section>
     </div>
 
-    ${state.assets.length ? `
+    ${state.assets.length || hasInvest ? `
     <section class="card">
       <h2>Napoved</h2>
       <div class="horizon">
@@ -75,8 +82,10 @@ export function renderAssets(view) {
         <div class="h-row"><span>Danes</span><span>${money0(t.assets)}</span><span>${money0(t.debts)}</span><b>${money0(t.net)}</b></div>
         ${horizon.map(h => `<div class="h-row"><span>Čez ${h.n} ${h.n === 1 ? 'leto' : h.n === 2 ? 'leti' : h.n < 5 ? 'leta' : 'let'}</span><span>${money0(h.assets)}</span><span>${money0(h.debts)}</span><b>${money0(h.net)}</b></div>`).join('')}
       </div>
-      <p class="muted small">Upošteva amortizacijo stvari in odplačevanje dolgov. Ročno vpisane vrednosti (denar, naložbe) ostanejo enake – posodobi jih, ko se spremenijo.</p>
+      <p class="muted small">Upošteva amortizacijo stvari in odplačevanje dolgov. Ročno vpisane vrednosti ostanejo enake – posodobi jih, ko se spremenijo.${hasInvest ? ' Naložbe rastejo po predpostavljenem donosu iz kartice Vlaganje, kar ni zagotovilo.' : ''}</p>
     </section>` : ''}`;
+
+  renderInvestCard(view.querySelector('#investCard'));
 
   view.querySelectorAll('[data-new]').forEach(btn => btn.addEventListener('click', () => openAssetDialog(null, btn.dataset.new)));
   view.querySelectorAll('.asset-row').forEach(row => row.addEventListener('click', () => openAssetDialog(state.assets.find(x => x.id === row.dataset.id))));

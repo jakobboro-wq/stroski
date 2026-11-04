@@ -21,6 +21,117 @@ function barPath(x, y, w, h, r) {
 }
 
 /**
+ * Rast naložbe: črta »vloženo«, črta pričakovane vrednosti in pas razpona med nizkim in visokim scenarijem.
+ * points: [{ label, tooltipLabel, yearLabel, invested, low, mid, high }] (low/mid/high so v preteklosti null)
+ * opts: { format, axisFormat, ariaLabel }
+ */
+export function projectionChart(el, points, { format, axisFormat, ariaLabel = '' }) {
+  const m = { t: 16, r: 66, b: 28, l: 56 };
+  const H = 280;
+  let scaleX = () => 0;
+  let geometry = null;
+
+  const draw = () => {
+    const W = Math.round(el.clientWidth);
+    if (!W || W === el._drawnWidth) return;
+    el._drawnWidth = W;
+
+    const iw = W - m.l - m.r;
+    const ih = H - m.t - m.b;
+    const { top, ticks } = niceScale(Math.max(0, ...points.map(p => Math.max(p.high ?? 0, p.invested))));
+    const x = i => m.l + (points.length > 1 ? (i / (points.length - 1)) * iw : 0);
+    const y = v => m.t + ih - (Math.max(0, v) / top) * ih;
+    scaleX = x;
+    const line = (key, list) => list.map((p, n) => `${n ? 'L' : 'M'}${x(p.i).toFixed(1)},${y(p[key]).toFixed(1)}`).join('');
+
+    const all = points.map((p, i) => ({ ...p, i }));
+    const future = all.filter(p => p.mid != null);
+    const end = all.at(-1);
+
+    let s = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(ariaLabel)}">`;
+    for (const t of ticks) {
+      const yy = Math.round(y(t)) + 0.5;
+      s += `<line class="${t === 0 ? 'baseline' : 'grid'}" x1="${m.l}" x2="${W - m.r}" y1="${yy}" y2="${yy}"/>`;
+      s += `<text class="tick" x="${m.l - 8}" y="${yy}" text-anchor="end" dominant-baseline="middle">${esc(axisFormat(t))}</text>`;
+    }
+
+    // Oznake let na osi x: največ toliko, kot jih gre na širino
+    const labelled = all.filter(p => p.yearLabel);
+    const every = Math.max(1, Math.ceil(labelled.length / Math.max(2, Math.floor(iw / 56))));
+    labelled.filter((_, n) => n % every === 0).forEach(p => {
+      s += `<text class="xlabel" x="${x(p.i).toFixed(1)}" y="${H - 8}" text-anchor="middle">${esc(p.yearLabel)}</text>`;
+    });
+
+    if (future.length) {
+      const band = `${line('high', future)}${[...future].reverse().map(p => `L${x(p.i).toFixed(1)},${y(p.low).toFixed(1)}`).join('')}Z`;
+      s += `<path class="band" d="${band}"/>`;
+      if (future[0].i > 0) {
+        const tx = x(future[0].i).toFixed(1);
+        s += `<line class="today" x1="${tx}" x2="${tx}" y1="${m.t}" y2="${m.t + ih}"/>`;
+      }
+    }
+    s += `<path class="series invested" d="${line('invested', all)}"/>`;
+    if (future.length) s += `<path class="series mid" d="${line('mid', future)}"/>`;
+
+    // Končni oznaki: vrednost ob koncu črte; če bi se prekrivali, ostane le zgornja (ostalo je v namigu in tabeli)
+    const labelY = v => Math.max(m.t + 6, y(v));
+    if (future.length) {
+      s += `<circle class="dot mid" cx="${x(end.i)}" cy="${y(end.mid)}" r="4"/>`;
+      s += `<text class="end" x="${x(end.i) + 8}" y="${labelY(end.mid)}" dominant-baseline="middle">${esc(axisFormat(end.mid))}</text>`;
+    }
+    s += `<circle class="dot invested" cx="${x(end.i)}" cy="${y(end.invested)}" r="4"/>`;
+    if (!future.length || Math.abs(y(end.mid) - y(end.invested)) >= 16) {
+      s += `<text class="end" x="${x(end.i) + 8}" y="${labelY(end.invested)}" dominant-baseline="middle">${esc(axisFormat(end.invested))}</text>`;
+    }
+
+    s += `<g class="cross" visibility="hidden"><line y1="${m.t}" y2="${m.t + ih}"/><circle class="dot mid" r="4"/><circle class="dot invested" r="4"/></g>`;
+    el.innerHTML = `${s}</svg>`;
+    geometry = { y };
+  };
+
+  el.onpointermove = e => {
+    const svg = el.querySelector('svg');
+    if (!svg || !geometry) return;
+    const px = e.clientX - svg.getBoundingClientRect().left;
+    const iw = el._drawnWidth - m.l - m.r;
+    const i = Math.round(((px - m.l) / iw) * (points.length - 1));
+    const p = points[Math.max(0, Math.min(points.length - 1, i))];
+    const idx = points.indexOf(p);
+    const cross = svg.querySelector('.cross');
+    const cx = scaleX(idx);
+    cross.setAttribute('visibility', 'visible');
+    const line = cross.querySelector('line');
+    line.setAttribute('x1', cx);
+    line.setAttribute('x2', cx);
+    const dotMid = cross.querySelector('.dot.mid');
+    const dotInv = cross.querySelector('.dot.invested');
+    dotInv.setAttribute('cx', cx);
+    dotInv.setAttribute('cy', geometry.y(p.invested));
+    dotMid.setAttribute('visibility', p.mid == null ? 'hidden' : 'visible');
+    if (p.mid != null) {
+      dotMid.setAttribute('cx', cx);
+      dotMid.setAttribute('cy', geometry.y(p.mid));
+    }
+    showTip(`<div class="tip-title">${esc(p.tooltipLabel)}</div>
+      ${p.mid != null ? `<div class="tip-row"><span>Pričakovano</span><b>${esc(format(p.mid))}</b></div>
+      <div class="tip-row"><span>Razpon</span><b>${esc(axisFormat(p.low))} – ${esc(axisFormat(p.high))}</b></div>` : ''}
+      <div class="tip-row"><span>Vloženo</span><b>${esc(format(p.invested))}</b></div>`, e.clientX, e.clientY);
+  };
+  el.onpointerleave = () => {
+    hideTip();
+    el.querySelector('.cross')?.setAttribute('visibility', 'hidden');
+  };
+  el.onpointerdown = null;
+  el.onclick = null;
+
+  el._drawnWidth = 0;
+  draw();
+  el._resizeObserver?.disconnect();
+  el._resizeObserver = new ResizeObserver(draw);
+  el._resizeObserver.observe(el);
+}
+
+/**
  * data: [{ key, label, tooltipLabel, value, selected }]
  * opts: { format, axisFormat, onSelect, ariaLabel }
  */

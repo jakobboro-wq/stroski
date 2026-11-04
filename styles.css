@@ -12,6 +12,7 @@
   --accent: #2a78d6;
   --accent-soft: #b7d3f6;
   --accent-ink: #1c5cab;
+  --series-2: #eb6834;
   --on-accent: #fff;
   --good: #006300;
   --bad: #c22f2f;
@@ -33,6 +34,7 @@
     --accent: #3987e5;
     --accent-soft: #184f95;
     --accent-ink: #86b6ef;
+    --series-2: #d95926;
     --good: #2fb52f;
     --bad: #e66767;
     --shadow: none;
@@ -52,6 +54,7 @@
   --accent: #3987e5;
   --accent-soft: #184f95;
   --accent-ink: #86b6ef;
+  --series-2: #d95926;
   --good: #2fb52f;
   --bad: #e66767;
   --shadow: none;
@@ -523,6 +526,57 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .h-row { display: grid; grid-template-columns: 1.2fr 1fr 1fr 1fr; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); text-align: right; }
 .h-row > :first-child { text-align: left; color: var(--ink-2); }
 .h-head { font-size: 12px; color: var(--muted); border-bottom: 0; padding-bottom: 0; }
+
+/* ---------- Vlaganje ---------- */
+.fund-list { display: grid; margin-bottom: 4px; }
+.fund-row, .deposit-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: calc(100% + 16px);
+  padding: 8px;
+  margin: 0 -8px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.fund-row:hover, .deposit-row:hover { background: var(--surface-2); }
+.fund-row .tx-meta { white-space: normal; }
+.fund-amt { display: grid; justify-items: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fund-amt small { font-size: 12px; color: var(--muted); }
+.fund-amt small.good { color: var(--good); }
+.fund-amt small.bad { color: var(--bad); }
+.invest-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0 10px; }
+.invest-tools select { flex: 1 1 140px; width: auto; }
+.seg-mini { display: flex; padding: 3px; border-radius: 10px; background: var(--surface-2); }
+.seg-mini button { padding: 6px 10px; border: 0; border-radius: 8px; background: none; color: var(--ink-2); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.seg-mini button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.chart-legend { flex-wrap: wrap; margin-bottom: 8px; }
+.key-line { width: 14px; height: 2px; border-radius: 1px; }
+.key-line.invested { background: var(--series-2); }
+.key-line.mid { background: var(--accent); }
+.key-band { width: 14px; height: 10px; border-radius: 2px; background: var(--accent); opacity: 0.18; }
+.chart .band { fill: var(--accent); fill-opacity: 0.12; stroke: none; }
+.chart .series { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.chart .series.mid { stroke: var(--accent); }
+.chart .series.invested { stroke: var(--series-2); }
+.chart .today { stroke: var(--axis); stroke-width: 1; }
+.chart .dot { stroke: var(--surface); stroke-width: 2; }
+.chart .dot.mid { fill: var(--accent); }
+.chart .dot.invested { fill: var(--series-2); }
+.chart .end { fill: var(--ink); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.chart .cross line { stroke: var(--axis); stroke-width: 1; }
+.sub-head { margin: 16px 0 6px; font-size: 14px; font-weight: 600; }
+.deposit-list { display: grid; }
+.deposit-row { justify-content: space-between; padding: 6px 8px; font-size: 14px; }
+.deposit-row .muted { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deposit-row b { font-variant-numeric: tabular-nums; }
+#investCard .horizon { margin-top: 12px; }
+#investCard .h-row { grid-template-columns: 0.8fr 0.9fr 1fr 1.5fr; font-size: 13px; }
 
 /* ---------- Sinhronizacija ---------- */
 .sync-form { display: grid; gap: 12px; max-width: 420px; }

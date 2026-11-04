@@ -1,8 +1,8 @@
 // Tanek ovoj okoli IndexedDB. Vsi podatki živijo v brskalniku na tej napravi.
 
 const DB_NAME = 'stroski';
-const DB_VERSION = 4;
-const STORES = { transactions: 'id', categories: 'id', rules: 'id', recurring: 'id', work: 'id', settings: 'id', assets: 'id', meta: 'key' };
+const DB_VERSION = 5;
+const STORES = { transactions: 'id', categories: 'id', rules: 'id', recurring: 'id', work: 'id', settings: 'id', assets: 'id', investments: 'id', meta: 'key' };
 
 let dbPromise;
 
