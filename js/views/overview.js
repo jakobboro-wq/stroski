@@ -4,6 +4,7 @@ import { buildIndex, addMonths, average, spendOf, incomeOf, variableOf, daysInMo
 import { EVERY, occurrencesBetween, amountInMonth, nextOccurrence } from '../recurring.js';
 import { openTxDialog } from '../dialog.js';
 import { workMonthNet } from './work.js';
+import { subscriptionsCard, bindSubscriptions } from './subscriptions.js';
 
 const dayShort = iso => { const [, m, d] = iso.split('-'); return `${+d}. ${+m}.`; };
 import { columnChart } from '../charts.js';
@@ -175,6 +176,8 @@ export function renderOverview(view, params) {
       <div class="chart" id="monthChart"></div>
     </section>
 
+    ${isCurrent || month === dataMonths.at(-1) ? subscriptionsCard() : ''}
+
     ${isCurrent ? `
     <div class="two-col">
       <section class="card">
@@ -204,7 +207,7 @@ export function renderOverview(view, params) {
               <span class="emoji-badge">${esc(r.c.emoji)}</span>
               <span class="tx-main">
                 <span class="tx-desc">${esc(r.s.description || r.c.name)}</span>
-                <span class="tx-meta">${esc(EVERY[r.s.every].short)}${r.next ? ` · naslednjič ${esc(dayShort(r.next))}` : ''}</span>
+                <span class="tx-meta">${esc(EVERY[r.s.every].short)}${r.s.every === 'year' ? '' : ` · ${money0(r.perMonth * 12)} na leto`}${r.next ? ` · naslednjič ${esc(dayShort(r.next))}` : ''}</span>
               </span>
               <span class="tx-amt${r.s.amount > 0 ? ' income' : ''}">${signedMoney(r.s.amount, r.s.currency)}</span>
             </button>`).join('')}</div>
@@ -260,6 +263,8 @@ export function renderOverview(view, params) {
     ariaLabel: 'Poraba po mesecih',
     onSelect: key => { location.hash = `#/pregled?m=${key}`; },
   });
+
+  bindSubscriptions(view);
 
   // Klik na ponavljajoči strošek odpre njegovo zadnjo transakcijo (sprememba zneska velja za naprej).
   view.querySelectorAll('[data-series]').forEach(btn => btn.addEventListener('click', () => {

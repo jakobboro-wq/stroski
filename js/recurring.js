@@ -44,6 +44,7 @@ export function nextOccurrence(series, after) {
 
 /** Transakcije, ki bi morale do danes nastati iz predloge. Id je določen z datumom, zato dve napravi ne ustvarita dvojnikov. */
 export function dueTransactions(series, today) {
+  if (series.imported) return []; // plačila pridejo z uvozom izpiska; sama jih ne dodajamo, da ne nastanejo dvojniki
   return occurrencesBetween(series, series.anchor, today).map(date => ({
     id: `${series.id}:${date}`,
     seriesId: series.id,

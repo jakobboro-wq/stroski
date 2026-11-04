@@ -5,6 +5,7 @@ import * as db from './db.js';
 import { DEFAULT_CATEGORIES, CATEGORIES_VERSION, OLD_DEFAULT_NAMES, RULES_VERSION, builtinRules, guessCategory, matchRule, normalize } from './categorize.js';
 import { SYNCED_STORES } from './merge.js';
 import { dueTransactions } from './recurring.js';
+import { matchSeries } from './subscriptions.js';
 
 export const BASE_CURRENCY = 'EUR';
 // recurring: ponavljajoči stroški/prihodki (predloge, iz katerih nastajajo transakcije)
@@ -243,6 +244,29 @@ export async function deleteSeries(id) {
   state.recurring = state.recurring.filter(s => s.id !== id);
   await Promise.all([db.removeMany('recurring', [id]), bury('recurring', [id])]);
   localChange();
+}
+
+/**
+ * Najdeno naročnino doda med ponavljajoče stroške in ji pripiše dosedanja plačila.
+ * imported: nova plačila pridejo z uvozom izpiska, zato jih aplikacija ne ustvarja sama.
+ */
+export async function confirmSubscription(c) {
+  const { description, amount, categoryId, account, currency, every, lastDate, key, txIds } = c;
+  const s = await saveSeries({ description, amount, categoryId, account, currency, every, anchor: lastDate, imported: true, matchKey: key });
+  const ids = new Set(txIds);
+  await saveTransactions(state.transactions.filter(t => ids.has(t.id)).map(t => ({ ...t, seriesId: s.id })));
+}
+
+/** Novo uvožena plačila pripiše potrjenim naročninam. Zadnje plačilo določa znesek za naprej. */
+export async function linkToSubscriptions(list) {
+  const latest = new Map();
+  for (const t of list) {
+    const s = matchSeries(t, state.recurring);
+    if (!s) continue;
+    t.seriesId = s.id;
+    if (t.date >= (latest.get(s.id)?.date ?? s.anchor)) latest.set(s.id, t);
+  }
+  for (const [id, t] of latest) await saveSeries({ ...seriesById(id), amount: t.amount, anchor: t.date });
 }
 
 // ---------- Ure in nastavitve ----------

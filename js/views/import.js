@@ -1,4 +1,4 @@
-import { state, allRules, saveTransactions, addRule, BASE_CURRENCY } from '../store.js';
+import { state, allRules, saveTransactions, addRule, linkToSubscriptions, BASE_CURRENCY } from '../store.js';
 import { parseCSV, detectColumns, rowsToTransactions, COLUMN_FIELDS } from '../csv.js';
 import { readXlsx, isXlsx } from '../xlsx.js';
 import { categoryOptions } from '../category-ui.js';
@@ -145,6 +145,7 @@ function drawPreview(view) {
     // Popravki v predogledu postanejo pravila za naprej.
     const learned = new Map(list.filter(t => t.categorySource === 'manual' && t.description).map(t => [t.description, t.categoryId]));
     session = null;
+    await linkToSubscriptions(list);
     await saveTransactions(list);
     for (const [description, categoryId] of learned) await addRule(description, categoryId);
     toast(`Uvoženo: ${plural(list.length, TX_FORMS)}`);
