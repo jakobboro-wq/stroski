@@ -642,7 +642,7 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .sheet-foot { display: flex; justify-content: space-between; gap: 8px; padding: 12px 20px calc(16px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
 .sheet-foot .primary { flex: 1; max-width: 220px; margin-left: auto; }
 .seg { display: grid; grid-template-columns: repeat(3, 1fr); padding: 3px; border-radius: 12px; background: var(--surface-2); }
-.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
 .seg span { display: block; padding: 7px 0; border-radius: 9px; text-align: center; font-size: 14px; font-weight: 550; color: var(--ink-2); cursor: pointer; }
 .seg input:checked + span { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
 .seg input:focus-visible + span { outline: 2px solid var(--accent); }
@@ -662,7 +662,7 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .amount-field input:focus { border-bottom-color: var(--accent); }
 .amount-field span { font-size: 28px; color: var(--muted); }
 .cat-grid { display: block; }
-.chip input { position: absolute; opacity: 0; pointer-events: none; }
+.chip input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
 .chip span {
   display: grid;
   justify-items: center;

@@ -100,9 +100,8 @@ export function openTxDialog(tx = null) {
   f.kind.value = kind;
   f.amount.value = tx ? String(Math.abs(tx.amount)).replace('.', ',') : '';
   f.date.value = tx?.date ?? todayISO();
-  f.account.value = tx?.account ?? lastAccount();
+  fillAccounts(tx?.account ?? lastAccount());
   f.description.value = tx?.description ?? '';
-  document.getElementById('accountList').innerHTML = accounts().map(a => `<option value="${esc(a)}">`).join('');
   document.getElementById('txDelete').hidden = !tx;
   const foreign = tx && tx.currency !== BASE_CURRENCY;
   document.getElementById('txCurrency').textContent = foreign ? tx.currency : '€';
@@ -113,6 +112,19 @@ export function openTxDialog(tx = null) {
   dlg.showModal();
   if (!tx) requestAnimationFrame(() => f.amount.focus());
 }
+
+const NEW_ACCOUNT = '__new__';
+// Izbira računa: pravi spustni seznam (datalist je ponudil samo vrednost, ki je že vpisana).
+function fillAccounts(current) {
+  const list = accounts();
+  if (current && !list.includes(current)) list.push(current);
+  f.accountSel.innerHTML = list.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('')
+    + `<option value="${NEW_ACCOUNT}">＋ Nov račun…</option>`;
+  f.accountSel.value = current || list[0];
+  f.account.value = '';
+  document.getElementById('accountNew').hidden = true;
+}
+const chosenAccount = () => (f.accountSel.value === NEW_ACCOUNT ? f.account.value.trim() : f.accountSel.value) || 'Revolut';
 
 const fmtDay = iso => { const [, m, d] = iso.split('-'); return `${+d}. ${+m}.`; };
 
@@ -138,6 +150,11 @@ form.addEventListener('change', e => {
     setTitle();
   }
   if (e.target.name === 'repeat' || e.target.name === 'date') updateRepeatHint();
+  if (e.target.name === 'accountSel') {
+    const isNew = f.accountSel.value === NEW_ACCOUNT;
+    document.getElementById('accountNew').hidden = !isNew;
+    if (isNew) f.account.focus();
+  }
 });
 f.amount.addEventListener('input', () => f.amount.setCustomValidity(''));
 document.getElementById('txClose').addEventListener('click', () => dlg.close());
@@ -163,7 +180,7 @@ form.addEventListener('submit', async e => {
     ...(before ?? { source: 'manual', currency: BASE_CURRENCY }),
     amount: Math.round(sign * value * 100) / 100,
     date: f.date.value || todayISO(),
-    account: f.account.value.trim(),
+    account: chosenAccount(),
     description: f.description.value.trim(),
     categoryId,
     categorySource: 'manual',

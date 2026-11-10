@@ -70,9 +70,9 @@
         </label>
         <div class="row2">
           <label class="field">Datum<input type="date" name="date"></label>
-          <label class="field">Račun<input name="account" list="accountList" autocomplete="off"></label>
+          <label class="field">Račun<select name="accountSel"></select></label>
         </div>
-        <datalist id="accountList"></datalist>
+        <label class="field" id="accountNew" hidden>Ime novega računa<input name="account" placeholder="npr. NLB, kartica Visa" autocomplete="off"></label>
         <label class="field">Ponavljanje
           <select name="repeat">
             <option value="">Ne ponavlja se</option>
