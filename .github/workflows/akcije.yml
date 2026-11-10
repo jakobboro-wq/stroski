@@ -1,0 +1,40 @@
+# Vsako jutro pobere akcije z javnih strani trgovin in jih shrani na vejo "akcije" (datoteka deals.json).
+# Veja se vsakič prepiše, da zgodovina ne raste. Aplikacija bere:
+# https://raw.githubusercontent.com/jakobboro-wq/stroski/akcije/deals.json
+name: Akcije
+
+on:
+  schedule:
+    - cron: '15 4 * * *' # 5.15 pozimi, 6.15 poleti
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: akcije
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Poberi akcije
+        run: node scraper/deals.mjs
+      - name: Shrani na vejo akcije
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir out && cp data/deals.json out/
+          cd out
+          git init -q -b akcije
+          git config user.name "akcije-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deals.json
+          git commit -q -m "Akcije $(date -u +%F)"
+          git push -q -f "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" akcije
