@@ -2,7 +2,9 @@
 // Izračun sledi tabeli »RTC evidenca ur«: ure = odhod − prihod (odmor je plačan), zaslužek po dnevih zaokrožen na cent.
 
 // rounding: zaokroževanje časa prihoda/odhoda (min); hoursStep/hoursMode: zaokroževanje opravljenih ur (min, nearest|down|up)
-export const DEFAULT_PAY = { id: 'pay', employer: 'RTC', netRate: 11, piz: 0.155, tax: 0, rounding: 5, hoursStep: 30, hoursMode: 'nearest' };
+// mergeGap: izhod iz službe do toliko minut (npr. malica zunaj) se šteje v delovni čas, ker je odmor plačan
+export const DEFAULT_PAY = { id: 'pay', employer: 'RTC', netRate: 11, piz: 0.155, tax: 0, rounding: 5, hoursStep: 30, hoursMode: 'nearest', mergeGap: 60 };
+export const MERGE_GAPS = [20, 30, 45, 60, 90];
 
 const pad = n => String(n).padStart(2, '0');
 const round2 = n => Math.round(n * 100) / 100;
@@ -55,6 +57,52 @@ export function monthTotals(sessions, month, p) {
   return { hours: round2(t.hours), net: round2(t.net), gross: round2(t.gross), days: t.days.size, open: t.open };
 }
 
+/** Ali je vrnitev ob `time` le kratek izhod po vnosu `last` (isti dan, največ `gap` minut kasneje). */
+export function isShortBreak(last, time, gap) {
+  if (!last?.start || !last.end) return false;
+  const away = toMin(time) - toMin(last.end);
+  return away >= 0 && away <= gap;
+}
+
+/** Vnos, ki se po kratkem izhodu nadaljuje: odhod se izbriše, izhod se zapiše, da je viden. */
+export const resumeAfterBreak = (last, time) => ({
+  ...last,
+  end: null,
+  breaks: [...(last.breaks ?? []), { from: last.end, to: time }],
+});
+
+export const breaksLabel = s => (s.breaks ?? []).map(b => `${b.from}–${b.to}`).join(', ');
+
+/**
+ * Dnevi, razdeljeni s kratkimi izhodi (npr. vnosi pred to nastavitvijo): vsak dan → en vnos.
+ * Vrne [{ keep, remove }]: keep je prvi vnos, raztegnjen do zadnjega odhoda, remove so id-ji ostalih.
+ */
+export function splitDays(sessions, gap) {
+  const byDate = new Map();
+  for (const s of sessions) {
+    if (!s.start || !s.end) continue;
+    if (!byDate.has(s.date)) byDate.set(s.date, []);
+    byDate.get(s.date).push(s);
+  }
+  const out = [];
+  for (const day of byDate.values()) {
+    day.sort((a, b) => toMin(a.start) - toMin(b.start));
+    let cur = null;
+    for (const s of day) {
+      if (cur && isShortBreak(cur.keep, s.start, gap) && toMin(s.end) > toMin(cur.keep.end)) {
+        cur.keep = { ...cur.keep, end: s.end, breaks: [...(cur.keep.breaks ?? []), { from: cur.keep.end, to: s.start }, ...(s.breaks ?? [])] };
+        cur.remove.push(s.id);
+        if (s.note && !cur.keep.note) cur.keep.note = s.note;
+        continue;
+      }
+      if (cur?.remove.length) out.push(cur);
+      cur = { keep: s, remove: [] };
+    }
+    if (cur?.remove.length) out.push(cur);
+  }
+  return out;
+}
+
 /** Čas iz Date, zaokrožen na `step` minut. */
 export function roundTime(date, step = 5) {
   const min = date.getHours() * 60 + date.getMinutes() + date.getSeconds() / 60;
@@ -64,10 +112,10 @@ export function roundTime(date, step = 5) {
 /**
  * Dogodki iz telefona ({ kind: 'in'|'out', at: ISO }) → novi ali spremenjeni delovni dnevi.
  * - prihod, ko je dan že odprt, se prezre (dvojni signal),
- * - prihod do 20 min po odhodu istega dne nadaljuje isti vnos (kratek izhod iz območja),
+ * - prihod do `gap` min po odhodu istega dne nadaljuje isti vnos (malica zunaj, kratek izhod iz območja),
  * - odhod brez prihoda ustvari vnos brez prihoda, da ga dopolniš.
  */
-export function applyEvents(sessions, events, step = 5) {
+export function applyEvents(sessions, events, step = 5, gap = DEFAULT_PAY.mergeGap) {
   const work = sessions.map(s => ({ ...s }));
   const touched = new Set();
   for (const e of [...events].sort((a, b) => a.at.localeCompare(b.at))) {
@@ -79,8 +127,8 @@ export function applyEvents(sessions, events, step = 5) {
     if (e.kind === 'in') {
       if (open) continue;
       const last = day.at(-1);
-      if (last?.end && toMin(time) - toMin(last.end) <= 20 && toMin(time) >= toMin(last.end)) {
-        last.end = null;
+      if (isShortBreak(last, time, gap)) {
+        Object.assign(last, resumeAfterBreak(last, time));
         touched.add(last.id);
         continue;
       }
@@ -155,7 +203,8 @@ export function monthCSV(sessions, month, p) {
     const h = hoursOf(s, p);
     const pay = h == null ? null : payOf(h, p);
     const [y, m, d] = s.date.split('-');
-    lines.push([`${+d}. ${+m}. ${y}`, s.start ?? '', s.end ?? '', num(h), num(pay?.gross), num(pay?.net), s.note ?? '']);
+    const note = [s.note, s.breaks?.length && `izhod ${breaksLabel(s)}`].filter(Boolean).join(' · ');
+    lines.push([`${+d}. ${+m}. ${y}`, s.start ?? '', s.end ?? '', num(h), num(pay?.gross), num(pay?.net), note]);
   }
   const t = monthTotals(sessions, month, p);
   lines.push(['Skupaj', '', '', num(t.hours), num(t.gross), num(t.net), '']);

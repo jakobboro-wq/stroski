@@ -1,7 +1,7 @@
 // Zavihek »Ure«: evidenca prihodov/odhodov, zaslužek, uvoz iz Excela in samodejno beleženje s telefonom.
 
 import { state, saveWork, deleteWork, getSetting, saveSetting } from '../store.js';
-import { DEFAULT_PAY, hoursOf, minutesOf, payOf, grossRate, monthTotals, roundTime, toMin, parseWorkbook, monthCSV } from '../work.js';
+import { DEFAULT_PAY, MERGE_GAPS, hoursOf, minutesOf, payOf, grossRate, monthTotals, roundTime, toMin, isShortBreak, resumeAfterBreak, breaksLabel, splitDays, parseWorkbook, monthCSV } from '../work.js';
 import { readXlsxSheets, isXlsx } from '../xlsx.js';
 import { addMonths } from '../stats.js';
 import * as cloud from '../cloud.js';
@@ -14,6 +14,8 @@ const dayName = iso => {
   const wd = new Date(y, m - 1, d).toLocaleDateString('sl-SI', { weekday: 'short' }).replace('.', '');
   return `${wd.charAt(0).toUpperCase() + wd.slice(1)} ${d}. ${m}.`;
 };
+// »do 1 ure« / »v 1 uri«
+const gapLabel = (min, inside = false) => (min < 60 ? `${min} min` : min === 60 ? (inside ? '1 uri' : '1 ure') : `${num(min / 60, 1)} ure`);
 const sortSessions = list => [...list].sort((a, b) => b.date.localeCompare(a.date) || (toMin(b.start) ?? 0) - (toMin(a.start) ?? 0));
 
 export function renderWork(view, params) {
@@ -25,6 +27,7 @@ export function renderWork(view, params) {
   const today = todayISO();
   const todays = state.work.filter(s => s.date === today);
   const open = todays.find(s => s.start && !s.end);
+  const split = splitDays(state.work.filter(s => s.date.startsWith(month)), pay.mergeGap);
 
   let status = '';
   if (month === now) {
@@ -57,6 +60,8 @@ export function renderWork(view, params) {
     </div>
     ${totals.open ? `<p class="hint-line">⚠ ${totals.open} ${totals.open === 1 ? 'vnos nima' : 'vnosi nimajo'} prihoda ali odhoda – dopolni ${totals.open === 1 ? 'ga' : 'jih'}, da se štejejo.</p>` : ''}
 
+    ${split.length ? `<div class="card hint merge-hint"><span>☕ ${split.length === 1 ? '1 dan je razdeljen' : `${split.length} ${split.length === 2 ? 'dneva sta razdeljena' : split.length < 5 ? 'dnevi so razdeljeni' : 'dni je razdeljenih'}`} s kratkim izhodom (do ${gapLabel(pay.mergeGap)}). Ker je odmor plačan, se ta čas lahko šteje zraven.</span><button class="btn primary" id="mergeDays">Združi</button></div>` : ''}
+
     <section class="card">
       <div class="card-head"><h2>Dnevi${totals.days ? ` (${totals.days})` : ''}</h2><button class="btn" id="addDay">+ Dodaj</button></div>
       ${sessions.length ? `<div class="work-list">${sessions.map(s => {
@@ -66,7 +71,7 @@ export function renderWork(view, params) {
         return `
           <button class="work-row${h == null ? ' open' : ''}" data-id="${esc(s.id)}"${actual}>
             <span class="work-day">${esc(dayName(s.date))}</span>
-            <span class="work-time">${esc(s.start || '—')} – ${esc(s.end || (s.start ? 'še traja' : '—'))}${s.source === 'auto' ? ' <span title="Zabeleženo samodejno">📍</span>' : ''}${s.note ? `<small>${esc(s.note)}</small>` : ''}</span>
+            <span class="work-time">${esc(s.start || '—')} – ${esc(s.end || (s.start ? 'še traja' : '—'))}${s.source === 'auto' ? ' <span title="Zabeleženo samodejno">📍</span>' : ''}${s.breaks?.length ? `<small>☕ izhod ${esc(breaksLabel(s))}, šteje zraven</small>` : ''}${s.note ? `<small>${esc(s.note)}</small>` : ''}</span>
             <span class="work-hours">${h == null ? '' : hoursLabel(h)}</span>
             <span class="work-pay">${h == null ? '' : money(payOf(h, pay).net)}</span>
           </button>`;
@@ -94,12 +99,15 @@ export function renderWork(view, params) {
           <label class="field">Smer zaokroževanja
             <select name="hoursMode"${pay.hoursStep ? '' : ' disabled'}>${[['nearest', 'Najbližje'], ['down', 'Navzdol'], ['up', 'Navzgor']].map(([v, l]) => `<option value="${v}"${pay.hoursMode === v ? ' selected' : ''}>${l}</option>`).join('')}</select>
           </label>
+          <label class="field">Izhod med delom (npr. malica zunaj)
+            <select name="mergeGap">${MERGE_GAPS.map(m => `<option value="${m}"${pay.mergeGap === m ? ' selected' : ''}>šteje zraven do ${gapLabel(m)}</option>`).join('')}</select>
+          </label>
           <label class="field">Čas prihoda/odhoda
             <select name="rounding">${[1, 5, 10, 15].map(m => `<option value="${m}"${pay.rounding === m ? ' selected' : ''}>na ${m} min</option>`).join('')}</select>
           </label>
         </form>
         <p class="muted small">${pay.hoursStep ? `Opravljene ure se zaokrožijo ${{ nearest: 'na najbližjo', down: 'navzdol na', up: 'navzgor na' }[pay.hoursMode]} ${{ 15: 'četrt ure', 30: 'pol ure', 60: 'uro' }[pay.hoursStep]} (npr. 8 h 20 min → ${num(hoursOf({ start: '08:00', end: '16:20' }, pay))} h).` : 'Ure se štejejo točno po minutah.'}</p>
-        <p class="muted small">Bruto urna postavka: <b>${money(grossRate(pay))}</b>. Odmor je plačan in šteje v delovni čas.</p>
+        <p class="muted small">Bruto urna postavka: <b>${money(grossRate(pay))}</b>. Odmor je plačan in šteje v delovni čas. Če greš ven in se vrneš v ${gapLabel(pay.mergeGap, true)}, ostane en vnos in čas zunaj šteje zraven.</p>
         <div class="button-row">
           <label class="btn">Uvozi iz Excela<input type="file" id="importXlsx" accept=".xlsx" hidden></label>
           <button class="btn" id="exportCsv"${sessions.length ? '' : ' disabled'}>Izvozi mesec (CSV)</button>
@@ -108,6 +116,13 @@ export function renderWork(view, params) {
     </div>`;
 
   view.querySelector('#punch')?.addEventListener('click', e => punch(e.target.dataset.kind, pay));
+  view.querySelector('#mergeDays')?.addEventListener('click', async () => {
+    const days = split.length === 1 ? '1 dan' : split.length === 2 ? '2 dneva' : split.length < 5 ? `${split.length} dneve` : `${split.length} dni`;
+    if (!(await ask(`Združim ${days}? Vsak dan postane en vnos od prvega prihoda do zadnjega odhoda.`, { yes: 'Združi' }))) return;
+    await saveWork(split.map(d => d.keep));
+    await deleteWork(split.flatMap(d => d.remove));
+    toast('Združeno');
+  });
   view.querySelector('#addDay').addEventListener('click', () => openWorkDialog(null, month === now ? today : `${month}-01`));
   view.querySelectorAll('.work-row').forEach(row => row.addEventListener('click', () => openWorkDialog(state.work.find(s => s.id === row.dataset.id))));
 
@@ -122,6 +137,7 @@ export function renderWork(view, params) {
       rounding: Number(f.rounding.value),
       hoursStep: Number(f.hoursStep.value),
       hoursMode: f.hoursMode.value,
+      mergeGap: Number(f.mergeGap.value),
     };
     if (![next.netRate, next.piz, next.tax].every(Number.isFinite) || next.netRate <= 0 || next.piz + next.tax >= 1) return toast('Preveri vpisane vrednosti.');
     saveSetting(next);
@@ -195,6 +211,12 @@ async function punch(kind, pay) {
   const today = todayISO();
   const time = roundTime(new Date(), pay.rounding);
   if (kind === 'in') {
+    const last = state.work.filter(s => s.date === today && s.end).sort((a, b) => toMin(b.end) - toMin(a.end))[0];
+    if (isShortBreak(last, time, pay.mergeGap)) {
+      await saveWork([resumeAfterBreak(last, time)]);
+      toast(`Nazaj ob ${time}, izhod ${last.end}–${time} šteje zraven`);
+      return;
+    }
     await saveWork([{ date: today, start: time, end: null, note: '', source: 'manual' }]);
     toast(`Prihod ob ${time}`);
   } else {

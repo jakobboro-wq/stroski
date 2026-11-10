@@ -89,7 +89,7 @@ async function takeWorkEvents() {
   const events = await cloud.getWorkEvents();
   if (!events.length) return;
   const pay = getSetting('pay', DEFAULT_PAY);
-  const changedDays = applyEvents(state.work, events, pay.rounding);
+  const changedDays = applyEvents(state.work, events, pay.rounding, pay.mergeGap);
   if (changedDays.length) await saveWork(changedDays);
   await cloud.deleteWorkEvents(events.map(e => e.id));
 }
