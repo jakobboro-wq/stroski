@@ -2,7 +2,10 @@
 
 import { state, getSetting, saveSetting } from '../store.js';
 import { DEALS_URL, STORE_NAMES, dealsForYou, filterDeals, validity } from '../deals.js';
+import { readLeafletPdf, parseLeaflet } from '../hofer.js';
 import { esc, money, todayISO, toast } from '../ui.js';
+
+const HOFER_LEAFLETS = 'https://www.hofer.si/aktualni-letaki-in-brosure';
 
 const CACHE_KEY = 'deals-cache';
 const PAGE = 60;
@@ -58,7 +61,9 @@ export function renderDeals(view) {
     loading = fetchDeals().then(() => { if (location.hash.startsWith('#/akcije')) renderDeals(view); });
   }
   data ??= cached();
-  if (!data?.deals) {
+  const hofer = getSetting('hofer', {});
+  const hoferDeals = (hofer.deals ?? []).filter(d => !d.to || d.to >= today);
+  if (!data?.deals && !hofer.deals) {
     view.innerHTML = `<header class="page-head"><h1>Akcije</h1></header>${failed
       ? '<section class="card"><p>Akcij trenutno ni mogoče naložiti. Preveri povezavo in poskusi znova.</p><button class="btn" id="dealsRetry">Poskusi znova</button></section>'
       : '<p class="muted">Nalagam akcije …</p>'}`;
@@ -66,17 +71,37 @@ export function renderDeals(view) {
     return;
   }
 
-  const stores = Object.entries(data.stores ?? {});
+  const auto = data?.deals ?? [];
+  const allDeals = [...auto, ...hoferDeals];
+  const stores = Object.entries(data?.stores ?? {});
+  if (hoferDeals.length) stores.push(['hofer', { ok: true, count: hoferDeals.length }]);
   const broken = stores.filter(([, s]) => !s.ok).map(([id]) => STORE_NAMES[id] ?? id);
-  const old = Date.now() - new Date(data.updatedAt).getTime() > 2 * 86400e3;
+  const old = data?.updatedAt && Date.now() - new Date(data.updatedAt).getTime() > 2 * 86400e3;
   const watch = watchList();
-  const forYou = dealsForYou(data.deals, { watch, bought: boughtNames() }, today);
+  const forYou = dealsForYou(allDeals, { watch, bought: boughtNames() }, today);
+  const fmt = isoDay => { const [, m, d] = isoDay.split('-'); return `${+d}. ${+m}.`; };
+  const hoferPeriod = hofer.f ? `${fmt(hofer.f)}${hofer.to ? `–${fmt(hofer.to)}` : ''}` : '';
+  const hoferExpired = hofer.deals && !hoferDeals.length;
 
   view.innerHTML = `
     <header class="page-head"><h1>Akcije</h1></header>
-    <p class="muted small">Osveženo ${esc(updatedLabel(data.updatedAt))} · ${stores.filter(([, s]) => s.ok).map(([id, s]) => `${esc(STORE_NAMES[id] ?? id)} ${s.count}`).join(' · ')}${failed ? ' · brez povezave, prikazujem shranjene' : ''}</p>
+    <p class="muted small">${data?.updatedAt ? `Osveženo ${esc(updatedLabel(data.updatedAt))} · ` : ''}${stores.filter(([, s]) => s.ok).map(([id, s]) => `${esc(STORE_NAMES[id] ?? id)} ${s.count}`).join(' · ')}${failed ? ' · brez povezave, prikazujem shranjene' : ''}</p>
     ${broken.length ? `<p class="card hint">Branje za ${esc(broken.join(', '))} tokrat ni uspelo (trgovina je morda spremenila stran).</p>` : ''}
     ${old ? '<p class="card hint">Akcije niso bile osvežene več kot dva dni, zato so lahko nekatere že potekle.</p>' : ''}
+
+    <section class="card hofer-card">
+      <div>
+        <h2>Hofer</h2>
+        <p class="muted small">${hofer.deals
+          ? (hoferExpired ? `Letak (${esc(hoferPeriod)}) je potekel. Uvozi novega.` : `Letak ${esc(hoferPeriod)} · ${hoferDeals.length} izdelkov`)
+          : 'Hoferjevih akcij ni mogoče brati samodejno. Na hofer.si prenesi letak (PDF) in ga izberi tukaj.'}</p>
+        <p class="muted small" id="hoferStatus" hidden></p>
+      </div>
+      <div class="hofer-actions">
+        <a class="btn ghost" href="${HOFER_LEAFLETS}" target="_blank" rel="noopener noreferrer">1. Odpri letake ↗</a>
+        <label class="btn${hoferExpired || !hofer.deals ? ' primary' : ''}">2. Uvozi PDF<input type="file" accept="application/pdf,.pdf" id="hoferFile" hidden></label>
+      </div>
+    </section>
 
     <section class="card">
       <div class="card-head"><h2>Zate</h2></div>
@@ -103,11 +128,11 @@ export function renderDeals(view) {
       </div>
       <div id="dealList"></div>
     </section>
-    <p class="muted small">Cene so z javnih strani trgovin in se lahko razlikujejo od cen v posamezni trgovini. Hofer, Spar in Mercator niso vključeni, ker njihovih akcij ni mogoče samodejno prebrati.</p>`;
+    <p class="muted small">Cene so z javnih strani trgovin in iz uvoženega Hoferjevega letaka. V posamezni trgovini se lahko razlikujejo. Spar in Mercator nista vključena, ker njunih akcij ni mogoče samodejno prebrati.</p>`;
 
   const list = view.querySelector('#dealList');
   const drawList = () => {
-    const all = filterDeals(data.deals, ui, today);
+    const all = filterDeals(allDeals, ui, today);
     list.innerHTML = all.length
       ? `<p class="muted small">${all.length} ${all.length === 1 ? 'akcija' : all.length === 2 ? 'akciji' : all.length < 5 ? 'akcije' : 'akcij'}</p>
          <div class="deal-list">${all.slice(0, ui.shown).map(d => dealRow(d, today)).join('')}</div>
@@ -136,4 +161,28 @@ export function renderDeals(view) {
   view.querySelectorAll('[data-unwatch]').forEach(b => b.addEventListener('click', async () => {
     await saveSetting({ id: 'deals', watch: watch.filter((_, i) => i !== Number(b.dataset.unwatch)) });
   }));
+
+  view.querySelector('#hoferFile').addEventListener('change', async e => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const status = view.querySelector('#hoferStatus');
+    status.hidden = false;
+    status.textContent = 'Berem letak …';
+    try {
+      const pages = await readLeafletPdf(file, p => { status.textContent = `Berem letak … ${Math.round(p * 100)} %`; });
+      const deals = parseLeaflet(pages, today);
+      if (!deals.length) {
+        status.textContent = 'V tem PDF-ju ni bilo mogoče najti izdelkov s cenami. Je to Hoferjev letak?';
+        return;
+      }
+      const periods = deals.map(d => d.f).filter(Boolean).sort();
+      const ends = deals.map(d => d.to).filter(Boolean).sort();
+      await saveSetting({ id: 'hofer', deals, f: periods[0] ?? null, to: ends.at(-1) ?? null, importedAt: Date.now() });
+      toast(`Hofer: uvoženih ${deals.length} izdelkov`);
+    } catch (err) {
+      console.error(err);
+      status.textContent = err.message || 'Letaka ni bilo mogoče prebrati.';
+    }
+  });
 }

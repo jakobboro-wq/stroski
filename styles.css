@@ -770,3 +770,9 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
   .nav a { min-width: 0; font-size: 9.5px; letter-spacing: -0.01em; }
   .nav a span { max-width: 100%; overflow: hidden; text-overflow: clip; }
 }
+.hofer-card { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.hofer-card h2 { margin: 0 0 4px; }
+.hofer-card > div:first-child { flex: 1 1 220px; min-width: 0; }
+.hofer-card p { margin: 0; }
+.hofer-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.hofer-actions .btn { cursor: pointer; }

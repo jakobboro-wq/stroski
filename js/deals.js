@@ -3,7 +3,7 @@
 import { normalize } from './categorize.js';
 
 export const DEALS_URL = 'https://raw.githubusercontent.com/jakobboro-wq/stroski/akcije/deals.json';
-export const STORE_NAMES = { tus: 'Tuš', lidl: 'Lidl' };
+export const STORE_NAMES = { tus: 'Tuš', lidl: 'Lidl', hofer: 'Hofer' };
 
 // Besede, ki same po sebi ne povedo, kaj je izdelek.
 const STOP = new Set(['akcija', 'novo', 'paket', 'kos', 'kosi', 'izdelek', 'postavka', 'razno', 'mix', 'bio', 'eko', 'super', 'extra', 'mega', 'maxi', 'mini', 'classic', 'original', 'premium', 'selection', 'family', 'pack', 'xxl', 'spar', 'tus', 'lidl', 'mercator', 'hofer']);
