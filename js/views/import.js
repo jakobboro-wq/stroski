@@ -1,5 +1,6 @@
 import { state, allRules, kindOf, saveTransactions, addRule, linkToSubscriptions, BASE_CURRENCY } from '../store.js';
 import { sameMoneyMove } from '../stocks.js';
+import { receiptGroups } from '../receipt.js';
 import { parseCSV, detectColumns, rowsToTransactions, COLUMN_FIELDS } from '../csv.js';
 import { readXlsx, isXlsx } from '../xlsx.js';
 import { categoryOptions } from '../category-ui.js';
@@ -70,8 +71,18 @@ function compute() {
   result.dupes = result.items.length - notImported.length;
   // Prenos v izpisku, ki je že vnesen kot nakup ali prodaja delnice. Samo prenosi: pravi strošek se ne sme izgubiti.
   const stockMoves = state.transactions.filter(t => t.source === 'stock');
-  result.fresh = notImported.filter(i => !(kindOf(i.categoryId) === 'transfer' && stockMoves.some(t => sameMoneyMove(t, i))));
-  result.stockDupes = notImported.length - result.fresh.length;
+  const afterStocks = notImported.filter(i => !(kindOf(i.categoryId) === 'transfer' && stockMoves.some(t => sameMoneyMove(t, i))));
+  result.stockDupes = notImported.length - afterStocks.length;
+  // Plačilo s kartico, ki je že vneseno s slikanim računom (vsota vseh delov računa). Vsak račun pokrije eno vrstico.
+  const receipts = receiptGroups(state.transactions);
+  const used = new Set();
+  result.fresh = afterStocks.filter(i => {
+    if (i.amount >= 0 || kindOf(i.categoryId) === 'transfer') return true;
+    const g = receipts.find(r => !used.has(r.id) && sameMoneyMove(r, i));
+    if (g) used.add(g.id);
+    return !g;
+  });
+  result.receiptDupes = used.size;
   session.result = result;
 }
 
@@ -97,11 +108,12 @@ function drawPreview(view) {
 
   let body = '';
   if (result) {
-    const { fresh, dupes, stockDupes, skipped } = result;
+    const { fresh, dupes, stockDupes, receiptDupes, skipped } = result;
     const dates = fresh.map(t => t.date).sort();
     const skippedNotes = [
       dupes && `${plural(dupes, TX_FORMS)} že uvoženih`,
       stockDupes && `že vneseno pri delnicah: ${stockDupes}`,
+      receiptDupes && `že vneseno s slikanim računom: ${receiptDupes}`,
       skipped.pending && `${skipped.pending} še v obdelavi (uvozi jih kasneje)`,
       skipped.failed && `${skipped.failed} zavrnjenih ali preklicanih`,
       skipped.invalid && `${skipped.invalid} neveljavnih vrstic`,

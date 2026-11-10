@@ -719,3 +719,25 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
 }
 @media (min-width: 900px) { .toast { bottom: 24px; } }
+
+/* ---------- Slikan račun ---------- */
+.scan-btn { justify-self: start; cursor: pointer; }
+.scan-progress { display: grid; gap: 10px; padding: 24px 0; text-align: center; }
+.scan-progress p { margin: 0; }
+.scan-progress .bar { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.scan-progress .bar i { display: block; height: 100%; background: var(--accent); transition: width 0.2s; }
+.rc-items { display: grid; gap: 8px; }
+.rc-items .btn { justify-self: start; }
+#rcList { display: grid; gap: 6px; }
+.rc-item { display: grid; grid-template-columns: minmax(0, 1fr) 76px 36px; grid-template-areas: "name amount del" "cat cat cat"; gap: 4px 6px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.rc-item .rc-name { grid-area: name; min-width: 0; }
+.rc-item .rc-amount { grid-area: amount; min-width: 0; text-align: right; }
+.rc-item .rc-cat { grid-area: cat; min-width: 0; }
+.rc-item .rc-del { grid-area: del; }
+@media (min-width: 600px) {
+  .rc-item { grid-template-columns: minmax(0, 1fr) 84px minmax(0, 170px) 36px; grid-template-areas: "name amount cat del"; }
+}
+.rc-raw pre { max-height: 220px; overflow: auto; margin: 6px 0 0; padding: 8px; border-radius: 8px; background: var(--surface-2); font-size: 12px; white-space: pre-wrap; }
+.tx-items summary { cursor: pointer; font-size: 13px; color: var(--ink-2); }
+.tx-items ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 2px; font-size: 13px; }
+.tx-items li { display: flex; justify-content: space-between; gap: 12px; }

@@ -55,6 +55,7 @@
         </button>
       </header>
       <div class="sheet-body">
+        <label class="btn scan-btn" id="scanBtn">📷 Slikaj račun<input type="file" accept="image/*" id="scanFile" hidden></label>
         <div class="seg" role="radiogroup" aria-label="Vrsta">
           <label><input type="radio" name="kind" value="expense" checked><span>Strošek</span></label>
           <label><input type="radio" name="kind" value="income"><span>Prihodek</span></label>
@@ -68,6 +69,7 @@
         <label class="field">Opis
           <input name="description" placeholder="npr. Mercator, kosilo, kino" autocomplete="off">
         </label>
+        <details class="tx-items" id="txItems" hidden></details>
         <div class="row2">
           <label class="field">Datum<input type="date" name="date"></label>
           <label class="field">Račun<select name="accountSel"></select></label>
@@ -146,6 +148,20 @@
     </form>
   </dialog>
 
+  <dialog id="receiptDialog" class="sheet">
+    <form id="receiptForm" novalidate>
+      <header class="sheet-head">
+        <h2>Račun</h2>
+        <button type="button" class="icon-btn" id="receiptClose" aria-label="Zapri">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </header>
+      <div class="sheet-body" id="receiptFields"></div>
+      <footer class="sheet-foot">
+        <button type="submit" class="btn primary" id="receiptSave" disabled>Shrani</button>
+      </footer>
+    </form>
+  </dialog>
   <dialog id="stockDialog" class="sheet">
     <form id="stockForm" novalidate>
       <header class="sheet-head">

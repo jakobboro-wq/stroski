@@ -4,7 +4,8 @@ import { state, category, kindOf, topOf, childrenOf, topCategories, categoryLabe
 import { EVERY, nextOccurrence } from './recurring.js';
 import { FALLBACK_CATEGORY, normalize } from './categorize.js';
 import { parseNumber } from './csv.js';
-import { esc, todayISO, ask, toast, plural, TX_FORMS } from './ui.js';
+import { esc, todayISO, ask, toast, plural, money, TX_FORMS } from './ui.js';
+import { scanReceipt } from './views/receipt.js';
 
 const dlg = document.getElementById('txDialog');
 const form = document.getElementById('txForm');
@@ -103,6 +104,12 @@ export function openTxDialog(tx = null) {
   fillAccounts(tx?.account ?? lastAccount());
   f.description.value = tx?.description ?? '';
   document.getElementById('txDelete').hidden = !tx;
+  document.getElementById('scanBtn').hidden = !!tx;
+  const itemsBox = document.getElementById('txItems');
+  itemsBox.hidden = !tx?.items?.length;
+  itemsBox.innerHTML = tx?.items?.length
+    ? `<summary>🧾 ${plural(tx.items.length, ['postavka', 'postavki', 'postavke', 'postavk'])} z računa</summary><ul>${tx.items.map(i => `<li><span>${esc(i.name)}</span><span>${esc(money(i.amount))}</span></li>`).join('')}</ul>`
+    : '';
   const foreign = tx && tx.currency !== BASE_CURRENCY;
   document.getElementById('txCurrency').textContent = foreign ? tx.currency : '€';
   renderCategories(kind, tx?.categoryId);
@@ -158,6 +165,13 @@ form.addEventListener('change', e => {
 });
 f.amount.addEventListener('input', () => f.amount.setCustomValidity(''));
 document.getElementById('txClose').addEventListener('click', () => dlg.close());
+document.getElementById('scanFile').addEventListener('change', e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  dlg.close();
+  scanReceipt(file);
+});
 
 form.addEventListener('submit', async e => {
   e.preventDefault();
