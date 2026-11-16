@@ -3,10 +3,10 @@
 import { normalize } from './categorize.js';
 
 export const DEALS_URL = 'https://raw.githubusercontent.com/jakobboro-wq/stroski/akcije/deals.json';
-export const STORE_NAMES = { tus: 'Tuš', lidl: 'Lidl', hofer: 'Hofer' };
+export const STORE_NAMES = { tus: 'Tuš', lidl: 'Lidl', hofer: 'Hofer', mercator: 'Mercator', eurospin: 'Eurospin', spar: 'Spar' };
 
 // Besede, ki same po sebi ne povedo, kaj je izdelek.
-const STOP = new Set(['akcija', 'novo', 'paket', 'kos', 'kosi', 'izdelek', 'postavka', 'razno', 'mix', 'bio', 'eko', 'super', 'extra', 'mega', 'maxi', 'mini', 'classic', 'original', 'premium', 'selection', 'family', 'pack', 'xxl', 'spar', 'tus', 'lidl', 'mercator', 'hofer']);
+const STOP = new Set(['akcija', 'novo', 'paket', 'kos', 'kosi', 'izdelek', 'postavka', 'razno', 'mix', 'bio', 'eko', 'super', 'extra', 'mega', 'maxi', 'mini', 'classic', 'original', 'premium', 'selection', 'family', 'pack', 'xxl', 'spar', 'tus', 'lidl', 'mercator', 'hofer', 'eurospin']);
 
 const words = s => normalize(s).replace(/[^a-z ]/g, ' ').split(' ').filter(Boolean);
 

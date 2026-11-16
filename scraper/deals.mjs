@@ -22,16 +22,16 @@ const pct = (p, o) => (o && p && o > p ? Math.round((1 - p / o) * 100) : null);
 const isoDay = sec => new Date(sec * 1000).toLocaleDateString('sv-SE', { timeZone: 'Europe/Ljubljana' });
 const humanize = slug => { const s = slug.replace(/-/g, ' ').trim(); return s ? s[0].toUpperCase() + s.slice(1) : ''; };
 
-async function get(url, retry = true) {
+async function get(url, retry = true, headers = {}) {
   try {
-    const res = await fetch(url, { headers: { 'user-agent': UA, 'accept-language': 'sl-SI,sl;q=0.9' }, redirect: 'follow', signal: AbortSignal.timeout(30000) });
+    const res = await fetch(url, { headers: { 'user-agent': UA, 'accept-language': 'sl-SI,sl;q=0.9', ...headers }, redirect: 'follow', signal: AbortSignal.timeout(30000) });
     if (!res.ok) throw Object.assign(new Error(`${res.status} ${url}`), { status: res.status });
     return await res.text();
   } catch (e) {
     // Enkrat ponovi ob prekinjeni povezavi ali napaki strežnika (5xx); 4xx ne.
     if (!retry || (e.status && e.status < 500)) throw e;
     await sleep(5000);
-    return get(url, false);
+    return get(url, false, headers);
   }
 }
 
@@ -176,8 +176,126 @@ async function scrapeHofer() {
   return [...all.values()].map(({ id, ...it }) => it);
 }
 
+// ---------- Mercator ----------
+// Spletna trgovina mercatoronline.si naloži izdelke iz JSON (getProducts), ki ga kliče tudi brskalnik; brez prijave.
+// Cene so spletne trgovine in se lahko razlikujejo od cen v posamezni prodajalni.
+const MERCATOR = 'https://mercatoronline.si';
+// Oznake popustov, ki jih stran sama uporabi za »Akcije« (akcije, gratis, Pika).
+const MERCATOR_DISCOUNTS = '1,2,3,4,5,6,10,11,15,16,18,100,103,109,113,114,115,126,101,108,110,111,104,105,106,112';
+const MERCATOR_PAGE = 100;
+const MERCATOR_NONFOOD = /KOZMETIK|NEGA|ČISTIL|GOSPODINJ|ŽIVAL|PAPIR|TEKSTIL|DOM\b|TEHNIK|PISARN|VRT|IGRA|ŠOL|AVTO|OBLAČIL|ZDRAVJE|HIGIEN|PRALN/;
+const PRICE_MARKERS = ['discount', 'pika_discount'];
+
+// »20261125004514« → »2026-11-25«; konec ob polnoči (do 6. ure) pomeni, da je zadnji dan dan prej.
+const mercatorDay = (s, end = false) => {
+  const m = String(s ?? '').match(/^(\d{4})(\d{2})(\d{2})(\d{2})/);
+  if (!m) return null;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  if (end && +m[4] < 6) d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+};
+const fmtEur = v => v.toFixed(2).replace('.', ',');
+const titleCase = s => (s ? s[0] + s.slice(1).toLowerCase() : null);
+
+/** Izdelki iz enega odgovora getProducts. */
+export function parseMercator(json) {
+  const out = [];
+  for (const it of json?.products ?? []) {
+    const x = it?.data;
+    if (it?.type !== 'product' || !x?.name) continue;
+    const cur = num(x.current_price);
+    if (!cur) continue;
+    const normal = num(x.normal_price);
+    const disc = (x.discounts ?? []).find(d => PRICE_MARKERS.includes(d.group_type) || d.marker_code === '11') ?? x.discounts?.[0] ?? null;
+    const text = disc?.hover_text?.trim() ?? '';
+    const multi = text.match(/nakupu ([2-9]|\d{2,}) izdelkov ali več je vsak (\d+) ?%/);
+    let p = cur, o = normal && normal > cur ? normal : null, d = null, t = 'Akcija';
+    if (multi) {
+      // Pogojni popust: cena na kos ob nakupu N ali več.
+      o = cur; p = round2(cur * (1 - multi[2] / 100)); d = +multi[2]; t = `Ob nakupu ${multi[1]} ali več`;
+    } else {
+      d = Math.abs(parseInt(disc?.value, 10)) || pct(p, o);
+      if (disc?.group_type === 'pika_discount') t = 'S Pika kartico';
+      else if (disc?.marker_code === '11') t = 'Znižano';
+      else if (text && !/^ugodno$/i.test(text)) t = text.length > 40 ? 'Akcija' : text;
+    }
+    const base = String(x.price_per_unit_base ?? '').replace(/^(\d+)\s*([a-z]+)$/i, '$1 $2');
+    out.push({
+      s: 'mercator', id: it.itemId ?? x.cinv, n: x.name.trim(), p, o, d,
+      q: null, b: x.price_per_unit > 0 && base ? `${base} = ${fmtEur(x.price_per_unit * (multi ? 1 - multi[2] / 100 : 1))}` : null,
+      u: it.url ? MERCATOR + it.url : null, i: it.mainImageSrc ?? null,
+      c: titleCase(x.category1), food: x.category1 ? !MERCATOR_NONFOOD.test(x.category1) : null, t,
+      f: mercatorDay(disc?.valid_from), to: mercatorDay(disc?.valid_to, true),
+      plus: disc?.group_type === 'pika_discount',
+    });
+  }
+  return out;
+}
+
+async function scrapeMercator() {
+  const all = new Map();
+  // »offset« je pri Mercatorju številka strani (0, 1, 2 …), ne zamik v izdelkih.
+  for (let page = 0; page < 60; page++) {
+    const qs = new URLSearchParams({ limit: MERCATOR_PAGE, offset: page, 'filterData[discounts]': MERCATOR_DISCOUNTS });
+    const json = JSON.parse(await get(`${MERCATOR}/products/browseProducts/getProducts?${qs}`, true, { 'x-requested-with': 'XMLHttpRequest', accept: 'application/json' }));
+    const items = parseMercator(json);
+    for (const it of items) if (!all.has(it.id)) all.set(it.id, it);
+    await sleep(PAUSE_MS);
+    const total = json.products?.[0]?.total ?? 0;
+    if (!json.products?.length || (page + 1) * MERCATOR_PAGE >= total) break;
+  }
+  return [...all.values()].map(({ id, ...it }) => it);
+}
+
+// ---------- Eurospin ----------
+// Stran /akcije/ ima vse akcijske izdelke (tekoči in naslednji teden) v HTML-ju.
+const EUROSPIN = 'https://www.eurospin.si/akcije/';
+
+/** »12.11 - 18.11« → { f, to } z letom glede na današnji dan (akcija čez novo leto). */
+function eurospinPeriod(s, today) {
+  const m = String(s ?? '').match(/(\d{1,2})\.(\d{1,2})\.?\s*-\s*(\d{1,2})\.(\d{1,2})/);
+  if (!m) return { f: null, to: null };
+  const [ty, tm] = today.split('-').map(Number);
+  const year = mo => (mo < tm - 6 ? ty + 1 : mo > tm + 6 ? ty - 1 : ty);
+  const iso = (d, mo) => `${year(+mo)}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  return { f: iso(m[1], m[2]), to: iso(m[3], m[4]) };
+}
+
+/** Izdelki s strani z akcijami. */
+export function parseEurospin(html, today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Ljubljana' })) {
+  const out = [];
+  const txt = s => (s == null ? null : unescapeHtml(s).replace(/&nbsp;| /g, ' ').replace(/\s+/g, ' ').trim() || null);
+  for (const t of html.split(/class="sn_promo_grid_item"/).slice(1)) {
+    const name = txt(t.match(/class="i_title"[^>]*>([^<]*)/)?.[1]);
+    const priceBox = t.match(/class="i_price"[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? '';
+    const p = num(priceBox.match(/itemprop="price"[^>]*>\s*([\d.,]+)/)?.[1]);
+    if (!name || !p) continue;
+    const old = num(txt(priceBox.replace(/<meta[^>]*>/g, '').split('<span')[0])?.match(/[\d.,]+/)?.[0]);
+    const brand = txt(t.match(/class="i_brand"[^>]*>([^<]*)/)?.[1]);
+    const info = txt(t.match(/class="i_price_info"[^>]*>([^<]*)/)?.[1]) ?? '';
+    const [pack, unit] = info.split(/\s+-\s+/);
+    const um = unit?.match(/za (\w+) ([\d.,]+)/);
+    const { f, to } = eurospinPeriod(t.match(/date_current_promo"[^>]*>([^<]*)/)?.[1], today);
+    out.push({
+      s: 'eurospin', n: [brand, name].filter(Boolean).join(' '), p, o: old && old > p ? old : null, d: pct(p, old),
+      q: pack || null, b: um ? `1 ${um[1]} = ${um[2]}` : null,
+      u: EUROSPIN, i: t.match(/class="i_image"[^>]*src="([^"]+)"/)?.[1] ?? t.match(/src="([^"]+)"[^>]*class="i_image"/)?.[1] ?? null,
+      c: null, food: null, t: 'Akcija', f, to,
+    });
+  }
+  return out;
+}
+
+async function scrapeEurospin() {
+  const seen = new Set();
+  return parseEurospin(await get(EUROSPIN)).filter(d => {
+    const k = `${d.n}|${d.p}|${d.f}`;
+    return !seen.has(k) && seen.add(k);
+  });
+}
+
 // ---------- Zagon ----------
-const STORES = { tus: scrapeTus, lidl: scrapeLidl, hofer: scrapeHofer };
+const STORES = { tus: scrapeTus, lidl: scrapeLidl, hofer: scrapeHofer, mercator: scrapeMercator, eurospin: scrapeEurospin };
 
 /**
  * Sestavi deals.json iz današnjih rezultatov in včerajšnje datoteke.
@@ -206,6 +324,9 @@ export function combine(results, prev, now = new Date().toISOString()) {
   return { updatedAt: now, stores, deals };
 }
 
+/** Izdelek brez praznih polj (null, plus: false); aplikacija manjkajoče bere enako kot null. */
+export const compact = d => Object.fromEntries(Object.entries(d).filter(([k, v]) => v !== null && !(k === 'plus' && v === false)));
+
 async function readPrev() {
   try { return JSON.parse(await readFile(PREV_FILE, 'utf8')); } catch { return null; }
 }
@@ -226,7 +347,9 @@ async function main() {
     return;
   }
   await mkdir('data', { recursive: true });
-  await writeFile('data/deals.json', JSON.stringify(out));
+  // Prazna polja izpustimo, da je datoteka manjša. food: false mora ostati (filter »samo hrana«).
+  const deals = out.deals.map(compact);
+  await writeFile('data/deals.json', JSON.stringify({ ...out, deals }));
 }
 
 // Zaženi samo, če je to glavna skripta (testi jo samo uvozijo).

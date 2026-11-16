@@ -1,7 +1,7 @@
 // Testi parserjev scraperja na majhnih, ročno sestavljenih odlomkih strani (oblika kot na pravih straneh).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseTus, parseLidl, lidlCampaigns, parseHofer, combine } from '../scraper/deals.mjs';
+import { parseTus, parseLidl, lidlCampaigns, parseHofer, parseMercator, parseEurospin, combine, compact } from '../scraper/deals.mjs';
 
 const tusItem = ({ name, price, old, cat = 'mlecni-izdelki', url = 'https://www.tus.si/izdelki/x/' }) => `
 <li class="col js-match-height product type-product product_cat-${cat}">
@@ -130,6 +130,97 @@ test('Hofer: prazna stran (za zadnjo stranjo) da prazen seznam', () => {
   assert.deepEqual(parseHofer('<div class="product-grid"></div>', 'x'), []);
 });
 
+// Mercator: odgovor getProducts (skrajšan na polja, ki jih beremo).
+const merc = (data, extra = {}) => ({
+  type: 'product', itemId: data.cinv ?? '1', url: '/izdelek/1/x', mainImageSrc: 'https://img/m.jpg', total: 1, ...extra,
+  data: { cinv: '1', name: 'Izdelek', normal_price: '1.99', current_price: '1.69', price_per_unit: 0, price_per_unit_base: '', category1: 'PIJAČE', discounts: [], ...data },
+});
+const mDisc = (over = {}) => ({ group_type: 'discount', marker_code: '3', value: '-15', hover_text: 'Ugodno', valid_from: '20261114004514', valid_to: '20261125004514', ...over });
+
+test('Mercator: navadna akcija z datumi, ceno na enoto in kategorijo', () => {
+  const [d] = parseMercator({ products: [merc({ price_per_unit: 1.1266, price_per_unit_base: '1l', discounts: [mDisc()] })] });
+  assert.equal(d.s, 'mercator');
+  assert.equal(d.p, 1.69);
+  assert.equal(d.o, 1.99);
+  assert.equal(d.d, 15);
+  assert.equal(d.t, 'Akcija');
+  assert.equal(d.b, '1 l = 1,13');
+  assert.equal(d.c, 'Pijače');
+  assert.equal(d.food, true);
+  assert.equal(d.f, '2026-11-14');
+  assert.equal(d.to, '2026-11-24'); // konec ob 0.45 → zadnji dan je dan prej
+  assert.equal(d.u, 'https://mercatoronline.si/izdelek/1/x');
+  assert.equal(d.plus, false);
+});
+
+test('Mercator: Pika kartica, Znižano, nehrana', () => {
+  const [pika, zn] = parseMercator({ products: [
+    merc({ cinv: '1', discounts: [mDisc({ group_type: 'pika_discount', marker_code: '104', hover_text: 'Za imetnike Pika kartice 15% ceneje.' })] }),
+    merc({ cinv: '2', category1: 'ČISTILA', discounts: [mDisc({ group_type: 'other', marker_code: '11', value: '-20', hover_text: 'Znižano' })] }),
+  ] });
+  assert.equal(pika.t, 'S Pika kartico');
+  assert.equal(pika.plus, true);
+  assert.equal(zn.t, 'Znižano');
+  assert.equal(zn.d, 20);
+  assert.equal(zn.food, false);
+});
+
+test('Mercator: ob nakupu 2 ali več je cena na kos s popustom', () => {
+  const [d] = parseMercator({ products: [merc({ normal_price: '0', current_price: '0.69', price_per_unit: 4.6, price_per_unit_base: '1kg',
+    discounts: [mDisc({ marker_code: '100', value: '', hover_text: 'Ob nakupu 2 izdelkov ali več je vsak 20% ceneje.' })] })] });
+  assert.equal(d.p, 0.55);
+  assert.equal(d.o, 0.69);
+  assert.equal(d.d, 20);
+  assert.equal(d.t, 'Ob nakupu 2 ali več');
+  assert.equal(d.b, '1 kg = 3,68');
+});
+
+test('Mercator: »ob nakupu 0 ali več« ni pogojni popust', () => {
+  const [d] = parseMercator({ products: [merc({ discounts: [mDisc({ marker_code: '100', value: '-15', hover_text: 'Ob nakupu 0 izdelkov ali več je vsak 15% ceneje.' })] })] });
+  assert.equal(d.p, 1.69);
+  assert.equal(d.o, 1.99);
+});
+
+test('Mercator: brez cene ali prazen odgovor', () => {
+  assert.deepEqual(parseMercator({ products: [merc({ current_price: '0' })] }), []);
+  assert.deepEqual(parseMercator({}), []);
+});
+
+const euroTile = ({ date = '12.11 - 18.11', name = 'BAVARSKI \n EMENTALEC', brand = 'LAND', old = '3,49&nbsp;', price = '2,49 €', info = '400 g&nbsp;-&nbsp;za kg 6,23 €' } = {}) => `
+<a href="javascript:;" class="sn_promo_grid_item" itemscope itemtype="http://schema.org/Product"><div class="sn_promo_grid_item_ct">
+<div class="date_current_promo">${date}</div><h2 itemprop="name" class="i_title">${name}</h2><div itemprop="brand" class="i_brand">${brand}</div>
+<img itemprop="image" data-double-img="false" class="i_image" src="https://img/e.jpg" />
+<div itemprop="offers" itemscope itemtype="http://schema.org/Offer" class="i_price"> ${old} <meta itemprop="priceCurrency" content="EUR" /> <span><i itemprop="price">${price}</i><small> za kos</small></span> </div>
+<div class="i_price_info">${info}</div></div></a>`;
+
+test('Eurospin: ime z znamko, stara in nova cena, embalaža, obdobje', () => {
+  const [d] = parseEurospin(euroTile(), '2026-11-16');
+  assert.equal(d.s, 'eurospin');
+  assert.equal(d.n, 'LAND BAVARSKI EMENTALEC');
+  assert.equal(d.p, 2.49);
+  assert.equal(d.o, 3.49);
+  assert.equal(d.d, 29);
+  assert.equal(d.q, '400 g');
+  assert.equal(d.b, '1 kg = 6,23');
+  assert.equal(d.i, 'https://img/e.jpg');
+  assert.equal(d.f, '2026-11-12');
+  assert.equal(d.to, '2026-11-18');
+});
+
+test('Eurospin: brez stare cene in cene na enoto, akcija čez novo leto', () => {
+  const [d] = parseEurospin(euroTile({ old: '', info: '1 kg', date: '29.12 - 4.1' }), '2026-12-28');
+  assert.equal(d.o, null);
+  assert.equal(d.d, null);
+  assert.equal(d.q, '1 kg');
+  assert.equal(d.b, null);
+  assert.equal(d.f, '2026-12-29');
+  assert.equal(d.to, '2027-01-04');
+});
+
+test('Eurospin: izdelek brez cene se izpusti', () => {
+  assert.deepEqual(parseEurospin(euroTile({ price: '' }), '2026-11-16'), []);
+});
+
 // ---------- combine: ohranjanje včerajšnjih podatkov ----------
 const deal = (s, n) => ({ s, n, p: 1 });
 const PREV = {
@@ -190,4 +281,9 @@ test('combine: padec se meri glede na zadnji uspešni dan, tudi po dnevu z napak
   assert.equal(bad.stores.tus.ok, false);
   const good = combine({ tus: { list: [...Array(900)].map((_, i) => deal('tus', `z${i}`)) }, lidl: { list: [deal('lidl', 'n')] } }, day1, '2026-11-15T12:00:00.000Z');
   assert.equal(good.stores.tus.ok, true);
+});
+
+test('compact: izpusti null in plus: false, food: false ostane', () => {
+  assert.deepEqual(compact({ s: 'x', o: null, food: false, plus: false, d: 0 }), { s: 'x', food: false, d: 0 });
+  assert.deepEqual(compact({ s: 'x', plus: true, food: null }), { s: 'x', plus: true });
 });

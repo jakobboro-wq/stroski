@@ -40,7 +40,9 @@ const boughtNames = () => [
 
 function dealRow(d, today, match = null) {
   const why = match && `${match.watched ? 'spremljaš' : 'kupuješ'}: ${match.why}`;
-  const meta = [STORE_NAMES[d.s] ?? d.s, d.t, validity(d, today), d.q, why].filter(Boolean);
+  // Popust samo s kartico (Lidl Plus, Pika), če to ne piše že v oznaki.
+  const card = d.plus && !/kartic|plus/i.test(d.t ?? '') ? 's kartico' : null;
+  const meta = [STORE_NAMES[d.s] ?? d.s, d.t, card, validity(d, today), d.q, why].filter(Boolean);
   return `
     <a class="deal" href="${esc(d.u ?? '#')}" target="_blank" rel="noopener noreferrer">
       ${d.i ? `<img src="${esc(d.i)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<span class="deal-noimg">🏷️</span>'}
@@ -132,7 +134,7 @@ export function renderDeals(view) {
       </div>
       <div id="dealList"></div>
     </section>
-    <p class="muted small">Cene so z javnih strani trgovin in iz uvoženega Hoferjevega letaka. V posamezni trgovini se lahko razlikujejo. Spar in Mercator nista vključena: cen nimata na javni strani (Mercator jih nalaga iz spletne trgovine, Spar ima letak samo v pregledovalniku).</p>`;
+    <p class="muted small">Cene so z javnih strani trgovin in iz uvoženega Hoferjevega letaka. V posamezni trgovini se lahko razlikujejo. Mercatorjeve cene so iz spletne trgovine Mercator Online in se lahko razlikujejo od cen v prodajalni. Spar ni vključen.</p>`;
 
   const list = view.querySelector('#dealList');
   const drawList = () => {
