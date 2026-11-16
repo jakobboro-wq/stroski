@@ -1,5 +1,6 @@
 # Vsako jutro pobere akcije z javnih strani trgovin in jih shrani na vejo "akcije" (datoteka deals.json).
-# Veja se vsakič prepiše, da zgodovina ne raste. Aplikacija bere:
+# Veja se vsakič prepiše, da zgodovina ne raste. Trgovina, ki ne uspe, obdrži včerajšnje akcije,
+# zagon pa se na koncu označi kot neuspešen (GitHub pošlje e-pošto). Aplikacija bere:
 # https://raw.githubusercontent.com/jakobboro-wq/stroski/akcije/deals.json
 name: Akcije
 
@@ -24,6 +25,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Testi
+        run: node --test
+      - name: Včerajšnje akcije
+        run: |
+          mkdir -p data
+          git fetch -q --depth=1 origin akcije && git show FETCH_HEAD:deals.json > data/prev.json || echo "Veje akcije še ni."
       - name: Poberi akcije
         run: node scraper/deals.mjs
       - name: Shrani na vejo akcije
@@ -38,3 +45,11 @@ jobs:
           git add deals.json
           git commit -q -m "Akcije $(date -u +%F)"
           git push -q -f "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" akcije
+      - name: Preveri, ali so uspele vse trgovine
+        run: |
+          node -e "
+            const { stores } = JSON.parse(require('fs').readFileSync('data/deals.json', 'utf8'));
+            const bad = Object.entries(stores).filter(([, s]) => !s.ok);
+            for (const [id, s] of bad) console.log('::error::' + id + ': ' + s.error);
+            process.exit(bad.length ? 1 : 0);
+          "

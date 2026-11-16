@@ -2,11 +2,14 @@
 // Bere samo javne strani z akcijami (tiste, ki jih vidiš v brskalniku), počasi in pod svojim imenom.
 // Zaženi: node scraper/deals.mjs
 
-import { writeFile, mkdir } from 'node:fs/promises';
+import { writeFile, readFile, mkdir } from 'node:fs/promises';
 
 const UA = 'Mozilla/5.0 (compatible; stroski-app/1.0; osebni sledilnik cen; +https://github.com/jakobboro-wq/stroski)';
 const PAUSE_MS = 1500; // premor med zahtevami, da trgovine ne obremenjujemo
 const MAX_PAGES = 25;
+// Če trgovina vrne manj kot ta delež včerajšnjih izdelkov, je stran verjetno spremenjena: velja kot napaka.
+const MIN_RATIO = 0.3;
+const PREV_FILE = 'data/prev.json'; // včerajšnji deals.json (workflow ga vzame z veje akcije)
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const unescapeHtml = s => String(s ?? '')
@@ -19,10 +22,17 @@ const pct = (p, o) => (o && p && o > p ? Math.round((1 - p / o) * 100) : null);
 const isoDay = sec => new Date(sec * 1000).toLocaleDateString('sv-SE', { timeZone: 'Europe/Ljubljana' });
 const humanize = slug => { const s = slug.replace(/-/g, ' ').trim(); return s ? s[0].toUpperCase() + s.slice(1) : ''; };
 
-async function get(url) {
-  const res = await fetch(url, { headers: { 'user-agent': UA, 'accept-language': 'sl-SI,sl;q=0.9' }, redirect: 'follow', signal: AbortSignal.timeout(30000) });
-  if (!res.ok) throw new Error(`${res.status} ${url}`);
-  return res.text();
+async function get(url, retry = true) {
+  try {
+    const res = await fetch(url, { headers: { 'user-agent': UA, 'accept-language': 'sl-SI,sl;q=0.9' }, redirect: 'follow', signal: AbortSignal.timeout(30000) });
+    if (!res.ok) throw Object.assign(new Error(`${res.status} ${url}`), { status: res.status });
+    return await res.text();
+  } catch (e) {
+    // Enkrat ponovi ob prekinjeni povezavi ali napaki strežnika (5xx); 4xx ne.
+    if (!retry || (e.status && e.status < 500)) throw e;
+    await sleep(5000);
+    return get(url, false);
+  }
 }
 
 // ---------- Tuš ----------
@@ -107,34 +117,116 @@ export function parseLidl(html, nowSec = Date.now() / 1000) {
 
 async function scrapeLidl() {
   const home = await get(`${LIDL}/`);
+  const campaigns = lidlCampaigns(home);
+  if (!campaigns.length) throw new Error('Na naslovni strani ni povezav na akcije');
   const all = new Map();
-  for (const path of lidlCampaigns(home)) {
+  let failed = 0;
+  for (const path of campaigns) {
     await sleep(PAUSE_MS);
-    const html = await get(`${LIDL}${path}`).catch(() => '');
+    const html = await get(`${LIDL}${path}`).catch(e => { failed++; console.warn('lidl', e.message); return ''; });
     for (const it of parseLidl(html)) if (!all.has(it.id)) all.set(it.id, it);
+  }
+  if (failed > campaigns.length / 2) throw new Error(`Ni uspelo ${failed} od ${campaigns.length} strani z akcijami`);
+  return [...all.values()].map(({ id, ...it }) => it);
+}
+
+// ---------- Hofer ----------
+// Nova stran (Nuxt) izriše ploščice izdelkov že na strežniku, 60 na stran (?page=N, dovoljeno v robots.txt).
+// Stare cene in popusta na spletu ni; ta sta samo v letaku (ročni uvoz PDF v aplikaciji).
+const HOFER = 'https://www.hofer.si';
+const HOFER_SECTIONS = [
+  ['/izdelki/pregled-posebne-ponudbe/k/1588161418378530', 'Posebna ponudba'],
+  ['/izdelki/vse-spuscene-cene/k/1588161418378360', 'Trajno znižano'],
+];
+
+/** Izdelki z ene strani Hoferjeve kategorije. */
+export function parseHofer(html, tag) {
+  const out = [];
+  const clean = html.replace(/<!--[\s\S]*?-->/g, '');
+  for (const t of clean.split(/<div class="product-tile"/).slice(1)) {
+    const text = cls => { const m = t.match(new RegExp(`class="[^"]*${cls}[^"]*"[^>]*>(?:\\s*<[a-z]+[^>]*>)*\\s*([^<]+)`)); return m ? unescapeHtml(m[1]).trim() : null; };
+    const name = text('product-tile__name');
+    const price = num(text('base-price__regular')?.replace(/[^\d,.]/g, ''));
+    if (!name || !price) continue;
+    const brand = text('product-tile__brandname');
+    const from = t.match(/[Nn]a voljo od (\d{1,2})\.\s?(\d{1,2})\.\s?(\d{4})/);
+    const href = t.match(/href="(\/izdelek\/[^"]+)"/)?.[1];
+    out.push({
+      s: 'hofer', id: t.match(/(\d{12,})"/)?.[1] ?? href, n: [brand, name].filter(Boolean).join(' '), p: price, o: null, d: null,
+      q: text('product-tile__unit-of-measurement'), b: text('product-tile__comparison-price')?.replace(/^\(|\)$/g, '') ?? null,
+      u: href ? HOFER + href : null, i: t.match(/<img[^>]+src="([^"]+)"/)?.[1] ?? null,
+      c: null, food: null, t: tag,
+      f: from ? `${from[3]}-${from[2].padStart(2, '0')}-${from[1].padStart(2, '0')}` : null, to: null,
+    });
+  }
+  return out;
+}
+
+async function scrapeHofer() {
+  const all = new Map();
+  for (const [path, tag] of HOFER_SECTIONS) {
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const items = parseHofer(await get(`${HOFER}${path}${page > 1 ? `?page=${page}` : ''}`), tag);
+      const before = all.size;
+      for (const it of items) if (!all.has(it.id)) all.set(it.id, it);
+      await sleep(PAUSE_MS);
+      if (!items.length || all.size === before) break; // za zadnjo stranjo pride prazna stran
+    }
   }
   return [...all.values()].map(({ id, ...it }) => it);
 }
 
 // ---------- Zagon ----------
-const STORES = { tus: scrapeTus, lidl: scrapeLidl };
+const STORES = { tus: scrapeTus, lidl: scrapeLidl, hofer: scrapeHofer };
 
-async function main() {
+/**
+ * Sestavi deals.json iz današnjih rezultatov in včerajšnje datoteke.
+ * results: { [trgovina]: { list } | { error } }.
+ * Trgovina, ki ni uspela (ali vrne sumljivo malo izdelkov), obdrži včerajšnje akcije in
+ * dobi ok: false, stale: true ter datum podatkov v `at`.
+ */
+export function combine(results, prev, now = new Date().toISOString()) {
   const stores = {};
   const deals = [];
-  for (const [id, fn] of Object.entries(STORES)) {
-    try {
-      const list = await fn();
-      deals.push(...list);
-      stores[id] = { ok: true, count: list.length };
-    } catch (e) {
-      stores[id] = { ok: false, count: 0, error: String(e.message).slice(0, 200) };
+  for (const [id, r] of Object.entries(results)) {
+    const before = prev?.stores?.[id];
+    const prevCount = before?.ok || before?.stale ? before.count : 0; // zadnji uspešni dan
+    let error = r.error ?? null;
+    if (!error && !r.list.length) error = '0 izdelkov (stran je morda spremenjena)';
+    else if (!error && prevCount && r.list.length < prevCount * MIN_RATIO) error = `samo ${r.list.length} izdelkov, včeraj ${prevCount} (stran je morda spremenjena)`;
+    if (!error) {
+      stores[id] = { ok: true, count: r.list.length, at: now };
+      deals.push(...r.list);
+      continue;
     }
-    console.log(id, stores[id]);
+    const old = (prev?.deals ?? []).filter(d => d.s === id);
+    stores[id] = { ok: false, count: old.length, error: String(error).slice(0, 200), ...(old.length && { stale: true, at: before?.at ?? prev?.updatedAt ?? null }) };
+    deals.push(...old);
+  }
+  return { updatedAt: now, stores, deals };
+}
+
+async function readPrev() {
+  try { return JSON.parse(await readFile(PREV_FILE, 'utf8')); } catch { return null; }
+}
+
+async function main() {
+  const prev = await readPrev();
+  if (!prev) console.warn(`Ni ${PREV_FILE}: ob napaki ne bo včerajšnjih podatkov.`);
+  const results = {};
+  for (const [id, fn] of Object.entries(STORES)) {
+    try { results[id] = { list: await fn() }; } catch (e) { results[id] = { error: e.message }; }
+  }
+  const out = combine(results, prev);
+  for (const [id, st] of Object.entries(out.stores)) console.log(id, st);
+  // Nič novega: datoteke ne zapišemo, workflow se ustavi in veja ostane, kakršna je.
+  if (Object.values(out.stores).every(st => !st.ok)) {
+    console.error('Nobena trgovina ni uspela.');
+    process.exitCode = 1;
+    return;
   }
   await mkdir('data', { recursive: true });
-  await writeFile('data/deals.json', JSON.stringify({ updatedAt: new Date().toISOString(), stores, deals }));
-  if (!deals.length) process.exitCode = 1;
+  await writeFile('data/deals.json', JSON.stringify(out));
 }
 
 // Zaženi samo, če je to glavna skripta (testi jo samo uvozijo).

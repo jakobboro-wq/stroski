@@ -1,7 +1,7 @@
 // Zavihek Akcije: akcije trgovin (osvežene vsako jutro), najprej tiste, ki te zanimajo.
 
 import { state, getSetting, saveSetting } from '../store.js';
-import { DEALS_URL, STORE_NAMES, dealsForYou, filterDeals, validity } from '../deals.js';
+import { DEALS_URL, STORE_NAMES, dealsForYou, filterDeals, validity, mergeLeaflet } from '../deals.js';
 import { readLeafletPdf, parseLeaflet } from '../hofer.js';
 import { esc, money, todayISO, toast } from '../ui.js';
 
@@ -72,10 +72,14 @@ export function renderDeals(view) {
   }
 
   const auto = data?.deals ?? [];
-  const allDeals = [...auto, ...hoferDeals];
+  const allDeals = mergeLeaflet(auto, hoferDeals);
   const stores = Object.entries(data?.stores ?? {});
-  if (hoferDeals.length) stores.push(['hofer', { ok: true, count: hoferDeals.length }]);
-  const broken = stores.filter(([, s]) => !s.ok).map(([id]) => STORE_NAMES[id] ?? id);
+  const hoferAll = allDeals.filter(d => d.s === 'hofer').length;
+  const hoferWeb = stores.find(([id]) => id === 'hofer');
+  if (hoferWeb) hoferWeb[1] = { ...hoferWeb[1], count: hoferAll };
+  else if (hoferDeals.length) stores.push(['hofer', { ok: true, count: hoferAll }]);
+  const broken = stores.filter(([, s]) => !s.ok).map(([id, s]) =>
+    `${STORE_NAMES[id] ?? id}${s.stale && s.at ? ` (prikazujem akcije z dne ${updatedLabel(s.at).split(' ob')[0]})` : ''}`);
   const old = data?.updatedAt && Date.now() - new Date(data.updatedAt).getTime() > 2 * 86400e3;
   const watch = watchList();
   const forYou = dealsForYou(allDeals, { watch, bought: boughtNames() }, today);
@@ -85,8 +89,8 @@ export function renderDeals(view) {
 
   view.innerHTML = `
     <header class="page-head"><h1>Akcije</h1></header>
-    <p class="muted small">${data?.updatedAt ? `Osveženo ${esc(updatedLabel(data.updatedAt))} · ` : ''}${stores.filter(([, s]) => s.ok).map(([id, s]) => `${esc(STORE_NAMES[id] ?? id)} ${s.count}`).join(' · ')}${failed ? ' · brez povezave, prikazujem shranjene' : ''}</p>
-    ${broken.length ? `<p class="card hint">Branje za ${esc(broken.join(', '))} tokrat ni uspelo (trgovina je morda spremenila stran).</p>` : ''}
+    <p class="muted small">${data?.updatedAt ? `Osveženo ${esc(updatedLabel(data.updatedAt))} · ` : ''}${stores.filter(([, s]) => s.ok || s.stale).map(([id, s]) => `${esc(STORE_NAMES[id] ?? id)} ${s.count}`).join(' · ')}${failed ? ' · brez povezave, prikazujem shranjene' : ''}</p>
+    ${broken.length ? `<p class="card hint">Branje za ${esc(broken.join(', '))} danes ni uspelo (trgovina je morda spremenila stran).</p>` : ''}
     ${old ? '<p class="card hint">Akcije niso bile osvežene več kot dva dni, zato so lahko nekatere že potekle.</p>' : ''}
 
     <section class="card hofer-card">
@@ -94,7 +98,7 @@ export function renderDeals(view) {
         <h2>Hofer</h2>
         <p class="muted small">${hofer.deals
           ? (hoferExpired ? `Letak (${esc(hoferPeriod)}) je potekel. Uvozi novega.` : `Letak ${esc(hoferPeriod)} · ${hoferDeals.length} izdelkov`)
-          : 'Hoferjevih akcij ni mogoče brati samodejno. Na hofer.si prenesi letak (PDF) in ga izberi tukaj.'}</p>
+          : 'Posebna ponudba in znižane cene s hofer.si se berejo samodejno. Popusti (stara cena, −%) so samo v letaku: prenesi ga (PDF) in izberi tukaj.'}</p>
         <p class="muted small" id="hoferStatus" hidden></p>
       </div>
       <div class="hofer-actions">
@@ -128,7 +132,7 @@ export function renderDeals(view) {
       </div>
       <div id="dealList"></div>
     </section>
-    <p class="muted small">Cene so z javnih strani trgovin in iz uvoženega Hoferjevega letaka. V posamezni trgovini se lahko razlikujejo. Spar in Mercator nista vključena, ker njunih akcij ni mogoče samodejno prebrati.</p>`;
+    <p class="muted small">Cene so z javnih strani trgovin in iz uvoženega Hoferjevega letaka. V posamezni trgovini se lahko razlikujejo. Spar in Mercator nista vključena: cen nimata na javni strani (Mercator jih nalaga iz spletne trgovine, Spar ima letak samo v pregledovalniku).</p>`;
 
   const list = view.querySelector('#dealList');
   const drawList = () => {

@@ -23,6 +23,22 @@ export function nameHas(deal, query) {
   return q.every(part => w.some(x => x.startsWith(part)));
 }
 
+/**
+ * Združi samodejno pobrane akcije z uvoženim Hoferjevim letakom.
+ * Izdelek iz letaka, ki je tudi na spletu (isto ime in cena), ne podvoji: spletni dobi popust in rok iz letaka.
+ */
+export function mergeLeaflet(auto, leaflet) {
+  const key = d => `${d.s}|${words(d.n).join(' ')}|${d.p}`;
+  const fromLeaflet = new Map(leaflet.map(d => [key(d), d]));
+  const merged = auto.map(d => {
+    const l = fromLeaflet.get(key(d));
+    if (!l) return d;
+    fromLeaflet.delete(key(d));
+    return { ...d, o: d.o ?? l.o, d: d.d ?? l.d, f: d.f ?? l.f, to: d.to ?? l.to };
+  });
+  return [...merged, ...fromLeaflet.values()];
+}
+
 /** Akcija še velja (ali se šele začne), glede na današnji datum. */
 export const isCurrent = (deal, today) => !deal.to || deal.to >= today;
 
