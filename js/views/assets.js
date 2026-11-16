@@ -5,6 +5,7 @@ import { ASSET_TYPES, DEBT_TYPES, METHODS, assetValue, lossNextYear, debtBalance
 import { parseNumber } from '../csv.js';
 import { renderInvestCard, investmentsToday, investmentsInYears } from './invest.js';
 import { renderStockCard, stocksToday } from './stocks.js';
+import { renderSimCard } from './simulation.js';
 import { esc, money, money0, todayISO, ask, toast } from '../ui.js';
 
 const num = (v, d = 2) => (v == null || v === '' || Number.isNaN(v) ? '' : Number(v).toLocaleString('sl-SI', { maximumFractionDigits: d, useGrouping: false }));
@@ -33,6 +34,8 @@ export function renderAssets(view) {
       <div class="hero-value ${t.net < 0 ? 'bad' : ''}">${money(t.net)}</div>
       <p class="muted small">Premoženje <b>${money(t.assets)}</b>${invested > 0 ? ` (od tega naložbe ${money(invested)})` : ''} − dolgovi <b>${money(t.debts)}</b>${yearlyLoss > 0 ? ` · stvari izgubijo približno <b>${money0(yearlyLoss)}</b> vrednosti na leto` : ''}</p>
     </section>
+
+    <section class="card" id="simCard"></section>
 
     <section class="card" id="investCard"></section>
 
@@ -90,6 +93,7 @@ export function renderAssets(view) {
       <p class="muted small">Upošteva amortizacijo stvari in odplačevanje dolgov. Ročno vpisane vrednosti ostanejo enake – posodobi jih, ko se spremenijo.${hasInvest ? ' Naložbe rastejo po predpostavljenem donosu iz kartice Vlaganje, kar ni zagotovilo. Delnice ostanejo pri trenutni vrednosti.' : ''}</p>
     </section>` : ''}`;
 
+  renderSimCard(view.querySelector('#simCard'));
   renderInvestCard(view.querySelector('#investCard'));
   renderStockCard(view.querySelector('#stockCard'));
 

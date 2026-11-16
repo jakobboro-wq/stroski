@@ -132,6 +132,62 @@ export function projectionChart(el, points, { format, axisFormat, ariaLabel = ''
 }
 
 /**
+ * Pahljača simulacije: pas med p10 in p90, črta mediane, vodoravna črta meje. Dovoli negativne vrednosti.
+ * points: [{ label, tooltipLabel, p10, p50, p90 }], opts: { format, axisFormat, threshold, ariaLabel }
+ */
+export function fanChart(el, points, { format, axisFormat, threshold = null, ariaLabel = '' }) {
+  const m = { t: 16, r: 66, b: 28, l: 60 };
+  const H = 260;
+  const draw = () => {
+    const W = Math.round(el.clientWidth);
+    if (!W || W === el._drawnWidth) return;
+    el._drawnWidth = W;
+    const iw = W - m.l - m.r, ih = H - m.t - m.b;
+    const vals = points.flatMap(p => [p.p10, p.p90]).concat(threshold ?? []);
+    let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
+    if (hi === lo) hi = lo + 100;
+    const span = hi - lo;
+    const pow = 10 ** Math.floor(Math.log10(span / 4));
+    const step = [1, 2, 2.5, 5, 10].map(f => f * pow).find(st => span / st <= 5) ?? 10 * pow;
+    lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
+    const x = i => m.l + (points.length > 1 ? (i / (points.length - 1)) * iw : 0);
+    const y = v => m.t + ih - ((v - lo) / (hi - lo)) * ih;
+    let s = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(ariaLabel)}">`;
+    for (let t = lo; t <= hi + step / 2; t += step) {
+      const yy = Math.round(y(t)) + 0.5;
+      s += `<line class="${Math.abs(t) < step / 2 ? 'baseline' : 'grid'}" x1="${m.l}" x2="${W - m.r}" y1="${yy}" y2="${yy}"/>`;
+      s += `<text class="tick" x="${m.l - 8}" y="${yy}" text-anchor="end" dominant-baseline="middle">${esc(axisFormat(t))}</text>`;
+    }
+    const every = Math.max(1, Math.ceil(points.length / Math.max(2, Math.floor(iw / 48))));
+    points.forEach((p, i) => { if (i % every === 0 || i === points.length - 1) s += `<text class="xlabel" x="${x(i).toFixed(1)}" y="${H - 8}" text-anchor="middle">${esc(p.label)}</text>`; });
+    const path = key => points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p[key]).toFixed(1)}`).join('');
+    s += `<path class="band" d="${path('p90')}${[...points].reverse().map((p, n) => `L${x(points.length - 1 - n).toFixed(1)},${y(p.p10).toFixed(1)}`).join('')}Z"/>`;
+    if (threshold != null) s += `<line class="limit" x1="${m.l}" x2="${W - m.r}" y1="${y(threshold).toFixed(1)}" y2="${y(threshold).toFixed(1)}"/>`;
+    s += `<path class="series mid" d="${path('p50')}"/>`;
+    const end = points.at(-1);
+    s += `<circle class="dot mid" cx="${x(points.length - 1)}" cy="${y(end.p50)}" r="4"/><text class="end" x="${x(points.length - 1) + 8}" y="${y(end.p50)}" dominant-baseline="middle">${esc(axisFormat(end.p50))}</text>`;
+    el.innerHTML = `${s}</svg>`;
+    el._geom = { x, iw };
+  };
+  el.onpointermove = e => {
+    const svg = el.querySelector('svg');
+    if (!svg || !el._geom) return;
+    const px = e.clientX - svg.getBoundingClientRect().left;
+    const i = Math.max(0, Math.min(points.length - 1, Math.round(((px - m.l) / el._geom.iw) * (points.length - 1))));
+    const p = points[i];
+    showTip(`<div class="tip-title">${esc(p.tooltipLabel ?? p.label)}</div>
+      <div class="tip-row"><span>Verjetno</span><b>${esc(format(p.p50))}</b></div>
+      <div class="tip-row"><span>8 od 10 primerov</span><b>${esc(axisFormat(p.p10))} – ${esc(axisFormat(p.p90))}</b></div>`, e.clientX, e.clientY);
+  };
+  el.onpointerleave = hideTip;
+  el._drawnWidth = 0;
+  draw();
+  el._resizeObserver?.disconnect();
+  el._resizeObserver = new ResizeObserver(draw);
+  el._resizeObserver.observe(el);
+}
+
+/**
  * data: [{ key, label, tooltipLabel, value, selected }]
  * opts: { format, axisFormat, onSelect, ariaLabel }
  */

@@ -844,3 +844,10 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .sl-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 8px 2px; border-bottom: 1px solid var(--line); font-size: 14px; }
 .sl-row > span { white-space: nowrap; font-weight: 600; }
 .good { color: var(--good); }
+
+/* Premoženje → simulacija */
+.chart .limit { stroke: var(--bad); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.sim-opts { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 8px; }
+.sim-opts input { width: 96px; display: inline-block; margin: 0 4px; }
+.sim-how summary { cursor: pointer; margin-top: 8px; }
+.sim-how p { margin-top: 6px; }
