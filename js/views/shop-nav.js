@@ -6,6 +6,7 @@ const LAST_KEY = 'shop-tab';
 export const SHOP_TABS = [
   { route: 'zaloga', label: 'Shramba', icon: '🧺' },
   { route: 'akcije', label: 'Akcije', icon: '🏷️' },
+  { route: 'seznam', label: 'Seznam', icon: '📝' },
 ];
 
 /** Zadnji odprti podzavihek (za gumb Nakupi v meniju). */
