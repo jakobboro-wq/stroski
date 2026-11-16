@@ -792,3 +792,30 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .hofer-card p { margin: 0; }
 .hofer-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .hofer-actions .btn { cursor: pointer; }
+
+/* Shramba */
+.page-head .btn input { display: none; }
+.pt-rec, .pt-item { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 10px 2px; border-bottom: 1px solid var(--line); }
+.pt-em { font-size: 20px; line-height: 1.4; }
+.pt-main { display: grid; gap: 3px; min-width: 0; }
+.pt-name { font-weight: 600; font-size: 14px; overflow-wrap: anywhere; }
+.pt-tag, .pt-when { display: inline-block; margin-left: 4px; padding: 1px 8px; border-radius: 99px; font-size: 11px; font-weight: 650; background: var(--surface-2); color: var(--ink-2); vertical-align: 1px; }
+.pt-tag.now, .pt-when.out { background: var(--bad); color: #fff; }
+.pt-tag.buy, .pt-when.soon { background: #e8a33a; color: #1d1a14; }
+.pt-tag.wait { background: var(--accent-soft); color: var(--ink); }
+.pt-tag.stock { background: var(--good); color: #fff; }
+.pt-deal { font-size: 13px; color: var(--accent-ink); text-decoration: none; overflow-wrap: anywhere; }
+.pt-deal:hover { text-decoration: underline; }
+.pt-marks { display: grid; gap: 4px; }
+.btn.small { padding: 4px 10px; font-size: 12px; min-height: 0; }
+.pt-bar { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; max-width: 240px; }
+.pt-bar i { display: block; height: 100%; background: var(--good); }
+.pt-item.soon .pt-bar i { background: #e8a33a; }
+.pt-item.out .pt-bar i { background: var(--bad); }
+.pt-diff { font-weight: 650; color: var(--good); white-space: nowrap; }
+.pt-once summary { cursor: pointer; padding: 10px 2px; color: var(--ink-2); font-size: 14px; }
+.pt-group { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 2px; font-size: 14px; }
+.pt-gbar { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.pt-gbar i { display: block; height: 100%; background: var(--accent); }
+.pt-group b.good { color: var(--good); }
+@media (max-width: 520px) { .pt-marks { grid-auto-flow: row; } .pt-group { grid-template-columns: minmax(0, 1fr) auto; } .pt-gbar { display: none; } }

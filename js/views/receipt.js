@@ -2,7 +2,8 @@
 
 import { state, allRules, accounts, saveTransactions, addRule, getSetting, saveSetting, BASE_CURRENCY } from '../store.js';
 import { builtinRules, matchRule, FALLBACK_CATEGORY } from '../categorize.js';
-import { parseReceipt, receiptTransactions, itemKey } from '../receipt.js';
+import { parseReceipt, receiptTransactions, itemKey, suggestItemCategory } from '../receipt.js';
+import { classify } from '../products.js';
 import { readReceipt } from '../ocr.js';
 import { categoryOptions } from '../category-ui.js';
 import { parseNumber } from '../csv.js';
@@ -52,7 +53,8 @@ export async function scanReceipt(file) {
   }
   if (!dlg.open) return; // zaprl si, preden je končal
   const parsed = parse(text);
-  parsed.items.forEach(i => { if (!exists(i.categoryId)) i.categoryId = null; });
+  // Zapomnjena kategorija ima prednost; neživila (čistila, kozmetika) dobijo predlog.
+  parsed.items.forEach(i => { if (!exists(i.categoryId)) i.categoryId = suggestItemCategory(i, exists); });
   const guessed = exists(parsed.storeCategoryId) ? parsed.storeCategoryId
     : exists(matchRule(parsed.store, allRules())?.categoryId) ? matchRule(parsed.store, allRules()).categoryId : FALLBACK_CATEGORY.expense;
   const account = parsed.payment === 'cash' ? 'Gotovina' : parsed.payment === 'card' ? 'Revolut' : lastManualAccount();
@@ -60,9 +62,12 @@ export async function scanReceipt(file) {
   render({ ...parsed, date: parsed.date ?? todayISO(), account, storeCategoryId: guessed });
 }
 
+// Količina, teža in popust z računa gredo s postavko naprej (niso za urejanje).
+const extraOf = i => JSON.stringify(Object.fromEntries(['qty', 'kg', 'disc'].filter(k => i[k]).map(k => [k, i[k]])));
+
 function itemRow(i) {
   return `
-    <div class="rc-item">
+    <div class="rc-item" data-extra="${esc(extraOf(i))}">
       <input class="rc-name" value="${esc(i.name)}" aria-label="Postavka" autocomplete="off">
       <input class="rc-amount" value="${esc(fmt(i.amount))}" inputmode="decimal" aria-label="Znesek">
       <select class="rc-cat" aria-label="Kategorija"><option value="">kot trgovina</option>${categoryOptions(i.categoryId, ['expense'])}</select>
@@ -96,8 +101,11 @@ function render(r) {
   updateSum();
 }
 
+const safeJson = s => { try { return JSON.parse(s || '{}'); } catch { return {}; } };
+
 function readItems() {
   return [...body.querySelectorAll('.rc-item')].map(row => ({
+    ...safeJson(row.dataset.extra),
     name: row.querySelector('.rc-name').value.trim(),
     amount: Math.round(parseNumber(row.querySelector('.rc-amount').value) * 100) / 100,
     categoryId: row.querySelector('.rc-cat').value || null,
@@ -148,7 +156,7 @@ form.addEventListener('submit', async e => {
   const storeCategoryId = f.storeCat.value;
   const list = receiptTransactions({
     store, date: f.date.value || todayISO(), total, account: f.account.value, currency: BASE_CURRENCY, storeCategoryId,
-    items: items.map(i => ({ ...i, name: i.name || 'Postavka' })),
+    items: items.map(i => ({ ...i, name: i.name || 'Postavka', g: classify(i.name) })),
   }, crypto.randomUUID());
   dlg.close();
   await saveTransactions(list);

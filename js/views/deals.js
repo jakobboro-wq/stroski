@@ -52,6 +52,14 @@ function autoDeals() {
   return enriched.list;
 }
 
+/** Za druge poglede (Shramba): vse akcije z letakom vred; ob prvem klicu jih naloži in pokliče onFresh. */
+export function availableDeals(today, onFresh = () => {}) {
+  if (!loading) loading = fetchDeals().then(onFresh);
+  data ??= cached();
+  const hofer = (getSetting('hofer', {}).deals ?? []).filter(d => !d.to || d.to >= today).map(d => (d.g ? d : enrichDeal(d)));
+  return mergeLeaflet(autoDeals(), hofer);
+}
+
 const watchList = () => getSetting('deals', { watch: [] }).watch ?? [];
 const boughtNames = () => [
   ...state.transactions.flatMap(t => t.items?.map(i => i.name) ?? []),

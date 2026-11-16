@@ -1,6 +1,7 @@
 // Branje računa iz besedila, ki ga prebere OCR na napravi. Brez dostopa do brskalnika, da se da preizkusiti.
 
 import { normalize, matchRule } from './categorize.js';
+import { classify } from './products.js';
 
 // Znesek: 12,34 ali 1.234,56 (OCR včasih vrine presledek ob vejici). Lahko z minusom (popust).
 const AMOUNT = /(-\s?)?(\d{1,3}(?:[.\s]\d{3})*|\d+)\s?[,.]\s?(\d{2})(?!\d)/g;
@@ -100,6 +101,19 @@ const UNITS = new Set(['x', 'kos', 'kom', 'kg', 'g', 'l', 'ml', 'cl', 'dl']);
 export const itemKey = name => normalize(cleanItemName(name)).replace(/[^a-z ]/g, ' ').split(' ')
   .filter(w => w.length >= 2 && !UNITS.has(w)).join(' ');
 
+// Količina v vrstici: »1,000 KOS x 1,99«, »0,532 kg x 3,99«, »2 x 1,09«.
+const QTY = /(\d+(?:[.,]\d{1,3})?)\s*(kos|kom|kg)?\s*[x*]\s*(\d+[.,]\d{2})(?!\d)/i;
+
+/** Količina iz vrstice: { qty (kosov), kg (teža) } ali {}. */
+export function qtyOf(line) {
+  const m = String(line).match(QTY);
+  if (!m) return {};
+  const n = Number(m[1].replace(',', '.'));
+  if (!(n > 0)) return {};
+  if (/kg/i.test(m[2] ?? '') || !Number.isInteger(n)) return { kg: Math.round(n * 1000) / 1000 };
+  return n > 1 && n < 100 ? { qty: n } : {};
+}
+
 function findItems(lines) {
   const items = [];
   let pendingName = '';
@@ -123,13 +137,17 @@ function findItems(lines) {
     pendingName = '';
     if (!name) continue;
     if (amount < 0 || /popust|akcija|znizan/.test(text)) {
-      // Popust zmanjša prejšnjo postavko, da se vsota ujema.
-      if (items.length) items.at(-1).amount = round2(items.at(-1).amount - Math.abs(amount));
+      // Popust zmanjša prejšnjo postavko, da se vsota ujema, in se zapiše kot prihranek.
+      if (items.length) {
+        const last = items.at(-1);
+        last.amount = round2(last.amount - Math.abs(amount));
+        last.disc = round2((last.disc ?? 0) + Math.abs(amount));
+      }
       continue;
     }
     if (amount === 0 || amount > 5000) continue;
     started = true;
-    items.push({ name: name.slice(0, 60), amount });
+    items.push({ name: name.slice(0, 60), amount, ...qtyOf(line) });
   }
   return items;
 }
@@ -141,7 +159,7 @@ function findItems(lines) {
 export function parseReceipt(text, { rules = [], names = [], itemRules = {}, today = new Date().toISOString().slice(0, 10) } = {}) {
   const lines = String(text ?? '').split(/\r?\n/).map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
   const store = findStore(lines, rules, names);
-  const items = findItems(lines).map(i => ({ ...i, categoryId: itemRules[itemKey(i.name)] ?? null }));
+  const items = findItems(lines).map(i => ({ ...i, g: classify(i.name), categoryId: itemRules[itemKey(i.name)] ?? null }));
   const itemsSum = round2(items.reduce((s, i) => s + i.amount, 0));
   let total = findTotal(lines);
   if (total == null) total = itemsSum || Math.max(0, ...lines.flatMap(amountsIn));
@@ -157,6 +175,26 @@ export function parseReceipt(text, { rules = [], names = [], itemRules = {}, tod
   };
 }
 
+/** Postavka, kot se shrani pri transakciji: ime, znesek ter (če so) skupina, količina, teža in popust. */
+function itemRecord(i) {
+  const r = { name: i.name, amount: i.amount, g: i.g ?? classify(i.name) };
+  if (i.qty > 1) r.qty = i.qty;
+  if (i.kg) r.kg = i.kg;
+  if (i.disc > 0) r.disc = i.disc;
+  return Object.fromEntries(Object.entries(r).filter(([, v]) => v != null));
+}
+
+// Neživila z računa iz trgovine z živili: predlog kategorije (če je v tvojih kategorijah).
+const HOUSEHOLD = /cistil|pran|pomiv|papir|vreck|folij|brisac|mehcal|detergent|osvezil|razmasc|gobic|krpic|tablete za/;
+/** Predlagana kategorija stroška za postavko glede na skupino (null = kot trgovina). */
+export function suggestItemCategory(item, exists = () => true) {
+  const pick = id => (exists(id) ? id : null);
+  if (item.g === 'drogerija') return pick(HOUSEHOLD.test(normalize(item.name)) ? 'household' : 'care');
+  if (item.g === 'zivali') return pick('other');
+  if (item.g === 'drugo') return pick('home');
+  return null;
+}
+
 /**
  * Iz pregledanega računa naredi transakcije: ena na kategorijo, da so stroški pravilno razporejeni.
  * Razlika do skupnega zneska (neprebrane postavke) gre v kategorijo trgovine.
@@ -169,7 +207,7 @@ export function receiptTransactions({ store, date, total, account, currency, sto
     if (item) g.items.push(item);
     groups.set(categoryId, g);
   };
-  for (const i of items) if (i.amount) add(i.categoryId || storeCategoryId, i.amount, { name: i.name, amount: i.amount });
+  for (const i of items) if (i.amount) add(i.categoryId || storeCategoryId, i.amount, itemRecord(i));
   const rest = round2(total - [...groups.values()].reduce((s, g) => s + g.amount, 0));
   if (Math.abs(rest) >= 0.01) add(storeCategoryId, rest, null);
   return [...groups.entries()]
