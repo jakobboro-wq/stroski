@@ -819,3 +819,17 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .pt-gbar i { display: block; height: 100%; background: var(--accent); }
 .pt-group b.good { color: var(--good); }
 @media (max-width: 520px) { .pt-marks { grid-auto-flow: row; } .pt-group { grid-template-columns: minmax(0, 1fr) auto; } .pt-gbar { display: none; } }
+
+/* Nakupi: podzavihki */
+.subtabs { display: flex; gap: 4px; padding: 3px; margin: -6px 0 16px; border-radius: 12px; background: var(--surface-2); }
+.subtabs a { flex: 1; padding: 8px 10px; border-radius: 9px; text-align: center; font-size: 14px; font-weight: 550; color: var(--ink-2); text-decoration: none; }
+.subtabs a.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.subtabs a:focus-visible { outline: 2px solid var(--accent); }
+
+/* Nastavitve: zobnik desno zgoraj (glava strani pusti prostor zanj) */
+.gear { position: fixed; z-index: 20; top: calc(10px + env(safe-area-inset-top)); right: 12px; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--surface); border: 1px solid var(--line); color: var(--ink-2); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08); }
+.gear svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.gear:hover, .gear.active { color: var(--accent-ink); border-color: var(--accent); }
+.gear:focus-visible { outline: 2px solid var(--accent); }
+.page-head { padding-right: 48px; }
+@media (min-width: 900px) { .gear { top: 16px; right: 20px; } }

@@ -1,0 +1,33 @@
+// Skupna glava zavihka Nakupi: podzavihka Shramba in Akcije ter gumb za slikanje računa.
+
+import { scanReceipt } from './receipt.js';
+
+const LAST_KEY = 'shop-tab';
+export const SHOP_TABS = [
+  { route: 'zaloga', label: 'Shramba', icon: '🧺' },
+  { route: 'akcije', label: 'Akcije', icon: '🏷️' },
+];
+
+/** Zadnji odprti podzavihek (za gumb Nakupi v meniju). */
+export function lastShopTab() {
+  try { return SHOP_TABS.some(t => t.route === localStorage.getItem(LAST_KEY)) ? localStorage.getItem(LAST_KEY) : 'zaloga'; } catch { return 'zaloga'; }
+}
+
+export function shopHeader(active) {
+  try { localStorage.setItem(LAST_KEY, active); } catch { /* ni nujno */ }
+  return `
+    <header class="page-head spread"><h1>Nakupi</h1>
+      <label class="btn primary">📷 Slikaj račun<input type="file" accept="image/*" capture="environment" class="shop-scan" hidden></label>
+    </header>
+    <nav class="subtabs" aria-label="Nakupi">
+      ${SHOP_TABS.map(t => `<a href="#/${t.route}"${t.route === active ? ' class="on" aria-current="page"' : ''}>${t.icon} ${t.label}</a>`).join('')}
+    </nav>`;
+}
+
+export function bindShopHeader(view) {
+  view.querySelector('.shop-scan')?.addEventListener('change', e => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (file) scanReceipt(file);
+  });
+}

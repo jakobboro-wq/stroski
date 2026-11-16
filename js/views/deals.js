@@ -4,6 +4,7 @@ import { state, getSetting, saveSetting } from '../store.js';
 import { DEALS_URL, STORE_NAMES, dealsForYou, filterDeals, baseFilter, groupCounts, byGroup, validity, mergeLeaflet, isFoodDeal, isUpcoming, unitLabel } from '../deals.js';
 import { GROUP, enrichDeal } from '../products.js';
 import { readLeafletPdf, parseLeaflet } from '../hofer.js';
+import { shopHeader, bindShopHeader } from './shop-nav.js';
 import { esc, money, todayISO, toast } from '../ui.js';
 
 const HOFER_LEAFLETS = 'https://www.hofer.si/aktualni-letaki-in-brosure';
@@ -97,7 +98,7 @@ export function renderDeals(view) {
   const hofer = getSetting('hofer', {});
   const hoferDeals = (hofer.deals ?? []).filter(d => !d.to || d.to >= today).map(d => (d.g ? d : enrichDeal(d)));
   if (!data?.deals && !hofer.deals) {
-    view.innerHTML = `<header class="page-head"><h1>Akcije</h1></header>${failed
+    view.innerHTML = `${shopHeader('akcije')}${failed
       ? '<section class="card"><p>Akcij trenutno ni mogoče naložiti. Preveri povezavo in poskusi znova.</p><button class="btn" id="dealsRetry">Poskusi znova</button></section>'
       : '<p class="muted">Nalagam akcije …</p>'}`;
     view.querySelector('#dealsRetry')?.addEventListener('click', () => { loading = null; failed = false; renderDeals(view); });
@@ -121,7 +122,7 @@ export function renderDeals(view) {
   const foodCount = allDeals.filter(d => isFoodDeal(d) && !isUpcoming(d, today) && (!d.to || d.to >= today)).length;
 
   view.innerHTML = `
-    <header class="page-head"><h1>Akcije</h1></header>
+    ${shopHeader('akcije')}
     <p class="muted small">${data?.updatedAt ? `Osveženo ${esc(updatedLabel(data.updatedAt))} · ` : ''}${esc(nDeals(foodCount))} za hrano in pijačo v ${stores.filter(([, s]) => s.ok || s.stale).length} trgovinah${failed ? ' · brez povezave, prikazujem shranjene' : ''}</p>
     ${broken.length ? `<p class="card hint">Branje za ${esc(broken.join(', '))} danes ni uspelo (trgovina je morda spremenila stran).</p>` : ''}
     ${old ? '<p class="card hint">Akcije niso bile osvežene več kot dva dni, zato so lahko nekatere že potekle.</p>' : ''}
@@ -180,6 +181,7 @@ export function renderDeals(view) {
 
   // V pogledu »Hrana« so v »Ostalo« živila brez jasne skupine.
   const groupName = id => (id === 'drugo' && ui.mode === 'food' ? 'Ostala hrana' : GROUP[id]?.name ?? '');
+  bindShopHeader(view);
   const list = view.querySelector('#dealList');
   const groupChips = view.querySelector('#groupChips');
 

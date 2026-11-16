@@ -5,7 +5,7 @@ import { pantry, savings, spendByGroup, recommendations, cheaperElsewhere } from
 import { isFoodGroup, GROUP } from '../products.js';
 import { STORE_NAMES, validity, unitLabel } from '../deals.js';
 import { availableDeals } from './deals.js';
-import { scanReceipt } from './receipt.js';
+import { shopHeader, bindShopHeader } from './shop-nav.js';
 import { esc, money, todayISO, toast } from '../ui.js';
 
 const fmtDay = iso => { const [, m, d] = iso.split('-'); return `${+d}. ${+m}.`; };
@@ -89,9 +89,7 @@ export function renderPantry(view) {
   const receipts = new Set(tx.filter(t => t.source === 'receipt').map(t => t.receiptId)).size;
 
   view.innerHTML = `
-    <header class="page-head spread"><h1>Shramba</h1>
-      <label class="btn primary">📷 Slikaj račun<input type="file" accept="image/*" capture="environment" id="ptScan" hidden></label>
-    </header>
+    ${shopHeader('zaloga')}
     ${!all.length ? `
       <section class="card">
         <h2>Kako deluje</h2>
@@ -154,11 +152,7 @@ export function renderPantry(view) {
     </section>` : ''}
     <p class="muted small">Napoved temelji na razmikih med tvojimi nakupi (mediana, deljena s kupljeno količino). Izdelke loči po imenu na računu, zato je isti izdelek iz dveh trgovin lahko dvakrat.</p>`}`;
 
-  view.querySelector('#ptScan').addEventListener('change', e => {
-    const file = e.target.files[0];
-    e.target.value = '';
-    if (file) scanReceipt(file);
-  });
+  bindShopHeader(view);
   view.querySelectorAll('[data-food]').forEach(b => b.addEventListener('click', () => {
     ui.food = b.dataset.food === '1';
     try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch { /* ni nujno */ }
