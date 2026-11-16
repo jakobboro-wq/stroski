@@ -1,18 +1,31 @@
-// Zavihek Akcije: akcije trgovin (osvežene vsako jutro), najprej tiste, ki te zanimajo.
+// Zavihek Akcije: akcije trgovin (osvežene vsako jutro). Privzeto hrana, pregled po skupinah živil.
 
 import { state, getSetting, saveSetting } from '../store.js';
-import { DEALS_URL, STORE_NAMES, dealsForYou, filterDeals, validity, mergeLeaflet } from '../deals.js';
+import { DEALS_URL, STORE_NAMES, dealsForYou, filterDeals, baseFilter, groupCounts, byGroup, validity, mergeLeaflet, isFoodDeal, isUpcoming, unitLabel } from '../deals.js';
+import { GROUP, enrichDeal } from '../products.js';
 import { readLeafletPdf, parseLeaflet } from '../hofer.js';
 import { esc, money, todayISO, toast } from '../ui.js';
 
 const HOFER_LEAFLETS = 'https://www.hofer.si/aktualni-letaki-in-brosure';
 
 const CACHE_KEY = 'deals-cache';
+const UI_KEY = 'deals-ui';
 const PAGE = 60;
 let data = null;      // { updatedAt, stores, deals }
 let loading = null;
 let failed = false;
-const ui = { query: '', store: '', food: false, sort: 'discount', shown: PAGE };
+let enriched = { src: null, list: [] };
+
+// Filtri ostanejo med obiski (samo na tej napravi). Iskanje se ne shrani.
+const DEFAULT_UI = { mode: 'food', group: '', stores: [], sort: 'discount', minDisc: 0, noCard: false, upcoming: false };
+const ui = { ...DEFAULT_UI, ...loadUi(), query: '', shown: PAGE };
+function loadUi() {
+  try { return JSON.parse(localStorage.getItem(UI_KEY)) ?? {}; } catch { return {}; }
+}
+function saveUi() {
+  const { query, shown, ...keep } = ui;
+  try { localStorage.setItem(UI_KEY, JSON.stringify(keep)); } catch { /* ni nujno */ }
+}
 
 function cached() {
   try { return JSON.parse(localStorage.getItem(CACHE_KEY)); } catch { return null; }
@@ -32,6 +45,13 @@ async function fetchDeals() {
   }
 }
 
+/** Akcije s skupino in ceno na enoto. Starejši deals.json ju nima, zato ju dopolnimo enkrat na nalaganje. */
+function autoDeals() {
+  const src = data?.deals ?? [];
+  if (enriched.src !== src) enriched = { src, list: src.map(d => (d.g || d.up ? d : enrichDeal(d))) };
+  return enriched.list;
+}
+
 const watchList = () => getSetting('deals', { watch: [] }).watch ?? [];
 const boughtNames = () => [
   ...state.transactions.flatMap(t => t.items?.map(i => i.name) ?? []),
@@ -43,11 +63,12 @@ function dealRow(d, today, match = null) {
   // Popust samo s kartico (Lidl Plus, Pika), če to ne piše že v oznaki.
   const card = d.plus && !/kartic|plus/i.test(d.t ?? '') ? 's kartico' : null;
   const meta = [STORE_NAMES[d.s] ?? d.s, d.t, card, validity(d, today), d.q, why].filter(Boolean);
+  const unit = unitLabel(d);
   return `
-    <a class="deal" href="${esc(d.u ?? '#')}" target="_blank" rel="noopener noreferrer">
-      ${d.i ? `<img src="${esc(d.i)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<span class="deal-noimg">🏷️</span>'}
+    <a class="deal${isUpcoming(d, today) ? ' later' : ''}" href="${esc(d.u ?? '#')}" target="_blank" rel="noopener noreferrer">
+      ${d.i ? `<img src="${esc(d.i)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<span class="deal-noimg">${GROUP[d.g]?.emoji ?? '🏷️'}</span>`}
       <span class="deal-main"><span class="deal-name">${esc(d.n)}</span><span class="deal-meta">${esc(meta.join(' · '))}</span></span>
-      <span class="deal-price"><b>${esc(money(d.p))}</b>${d.o ? `<s>${esc(money(d.o))}</s>` : ''}${d.d ? `<em>−${d.d} %</em>` : ''}</span>
+      <span class="deal-price"><b>${esc(money(d.p))}</b>${d.d ? `<em>−${d.d} %</em>` : d.o ? `<s>${esc(money(d.o))}</s>` : ''}${unit ? `<small>${esc(unit)}</small>` : ''}</span>
     </a>`;
 }
 
@@ -55,6 +76,8 @@ const updatedLabel = iso => {
   const d = new Date(iso);
   return `${d.getDate()}. ${d.getMonth() + 1}. ob ${d.getHours()}.${String(d.getMinutes()).padStart(2, '0')}`;
 };
+const plural = (n, [one, two, few, many]) => `${n} ${n % 100 === 1 ? one : n % 100 === 2 ? two : n % 100 === 3 || n % 100 === 4 ? few : many}`;
+const nDeals = n => plural(n, ['akcija', 'akciji', 'akcije', 'akcij']);
 
 export function renderDeals(view) {
   const today = todayISO();
@@ -64,7 +87,7 @@ export function renderDeals(view) {
   }
   data ??= cached();
   const hofer = getSetting('hofer', {});
-  const hoferDeals = (hofer.deals ?? []).filter(d => !d.to || d.to >= today);
+  const hoferDeals = (hofer.deals ?? []).filter(d => !d.to || d.to >= today).map(d => (d.g ? d : enrichDeal(d)));
   if (!data?.deals && !hofer.deals) {
     view.innerHTML = `<header class="page-head"><h1>Akcije</h1></header>${failed
       ? '<section class="card"><p>Akcij trenutno ni mogoče naložiti. Preveri povezavo in poskusi znova.</p><button class="btn" id="dealsRetry">Poskusi znova</button></section>'
@@ -73,8 +96,7 @@ export function renderDeals(view) {
     return;
   }
 
-  const auto = data?.deals ?? [];
-  const allDeals = mergeLeaflet(auto, hoferDeals);
+  const allDeals = mergeLeaflet(autoDeals(), hoferDeals);
   const stores = Object.entries(data?.stores ?? {});
   const hoferAll = allDeals.filter(d => d.s === 'hofer').length;
   const hoferWeb = stores.find(([id]) => id === 'hofer');
@@ -84,30 +106,17 @@ export function renderDeals(view) {
     `${STORE_NAMES[id] ?? id}${s.stale && s.at ? ` (prikazujem akcije z dne ${updatedLabel(s.at).split(' ob')[0]})` : ''}`);
   const old = data?.updatedAt && Date.now() - new Date(data.updatedAt).getTime() > 2 * 86400e3;
   const watch = watchList();
-  const forYou = dealsForYou(allDeals, { watch, bought: boughtNames() }, today);
+  const forYou = dealsForYou(allDeals.filter(d => !isUpcoming(d, today)), { watch, bought: boughtNames() }, today);
   const fmt = isoDay => { const [, m, d] = isoDay.split('-'); return `${+d}. ${+m}.`; };
   const hoferPeriod = hofer.f ? `${fmt(hofer.f)}${hofer.to ? `–${fmt(hofer.to)}` : ''}` : '';
   const hoferExpired = hofer.deals && !hoferDeals.length;
+  const foodCount = allDeals.filter(d => isFoodDeal(d) && !isUpcoming(d, today) && (!d.to || d.to >= today)).length;
 
   view.innerHTML = `
     <header class="page-head"><h1>Akcije</h1></header>
-    <p class="muted small">${data?.updatedAt ? `Osveženo ${esc(updatedLabel(data.updatedAt))} · ` : ''}${stores.filter(([, s]) => s.ok || s.stale).map(([id, s]) => `${esc(STORE_NAMES[id] ?? id)} ${s.count}`).join(' · ')}${failed ? ' · brez povezave, prikazujem shranjene' : ''}</p>
+    <p class="muted small">${data?.updatedAt ? `Osveženo ${esc(updatedLabel(data.updatedAt))} · ` : ''}${esc(nDeals(foodCount))} za hrano in pijačo v ${stores.filter(([, s]) => s.ok || s.stale).length} trgovinah${failed ? ' · brez povezave, prikazujem shranjene' : ''}</p>
     ${broken.length ? `<p class="card hint">Branje za ${esc(broken.join(', '))} danes ni uspelo (trgovina je morda spremenila stran).</p>` : ''}
     ${old ? '<p class="card hint">Akcije niso bile osvežene več kot dva dni, zato so lahko nekatere že potekle.</p>' : ''}
-
-    <section class="card hofer-card">
-      <div>
-        <h2>Hofer</h2>
-        <p class="muted small">${hofer.deals
-          ? (hoferExpired ? `Letak (${esc(hoferPeriod)}) je potekel. Uvozi novega.` : `Letak ${esc(hoferPeriod)} · ${hoferDeals.length} izdelkov`)
-          : 'Posebna ponudba in znižane cene s hofer.si se berejo samodejno. Popusti (stara cena, −%) so samo v letaku: prenesi ga (PDF) in izberi tukaj.'}</p>
-        <p class="muted small" id="hoferStatus" hidden></p>
-      </div>
-      <div class="hofer-actions">
-        <a class="btn ghost" href="${HOFER_LEAFLETS}" target="_blank" rel="noopener noreferrer">1. Odpri letake ↗</a>
-        <label class="btn${hoferExpired || !hofer.deals ? ' primary' : ''}">2. Uvozi PDF<input type="file" accept="application/pdf,.pdf" id="hoferFile" hidden></label>
-      </div>
-    </section>
 
     <section class="card">
       <div class="card-head"><h2>Zate</h2></div>
@@ -116,46 +125,117 @@ export function renderDeals(view) {
         ${watch.map((w, i) => `<span class="watch-chip">${esc(w)}<button type="button" data-unwatch="${i}" aria-label="Odstrani ${esc(w)}">×</button></span>`).join('')}
         <form id="watchForm" class="watch-add"><input name="w" placeholder="Spremljaj, npr. kava" autocomplete="off" aria-label="Spremljaj izdelek"><button class="btn">Dodaj</button></form>
       </div>
-      <div class="deal-list">${forYou.length ? forYou.map(x => dealRow(x.deal, today, x)).join('')
+      <div class="deal-list">${forYou.length ? forYou.slice(0, 12).map(x => dealRow(x.deal, today, x)).join('')
         : `<p class="muted small">${watch.length ? 'Za tvoj seznam ta hip ni akcij.' : 'Dodaj, kaj kupuješ (npr. mleko, kava, pivo), pa ti pokažem akcije zanje.'}</p>`}</div>
     </section>
 
-    <section class="card">
-      <div class="card-head"><h2>Vse akcije</h2></div>
-      <div class="deal-filters">
-        <input type="search" id="dealQuery" placeholder="Išči, npr. mleko" value="${esc(ui.query)}" autocomplete="off">
-        <select id="dealStore" aria-label="Trgovina"><option value="">Vse trgovine</option>${stores.map(([id]) => `<option value="${esc(id)}"${ui.store === id ? ' selected' : ''}>${esc(STORE_NAMES[id] ?? id)}</option>`).join('')}</select>
+    <section class="card deals-browse">
+      <div class="deals-top">
+        <div class="seg-mini" role="group" aria-label="Kaj prikažem">
+          <button type="button" data-mode="food" class="${ui.mode === 'food' ? 'on' : ''}">🍽️ Hrana in pijača</button>
+          <button type="button" data-mode="all" class="${ui.mode === 'all' ? 'on' : ''}">Vse</button>
+        </div>
         <select id="dealSort" aria-label="Razvrsti">
           <option value="discount"${ui.sort === 'discount' ? ' selected' : ''}>Največji popust</option>
+          <option value="unit"${ui.sort === 'unit' ? ' selected' : ''}>Najnižja cena na kg/l</option>
           <option value="price"${ui.sort === 'price' ? ' selected' : ''}>Najnižja cena</option>
           <option value="name"${ui.sort === 'name' ? ' selected' : ''}>Po imenu</option>
         </select>
-        <label class="check"><input type="checkbox" id="dealFood"${ui.food ? ' checked' : ''}> Samo hrana in pijača</label>
+      </div>
+      <input type="search" id="dealQuery" class="deal-search" placeholder="Išči, npr. mleko, kava, piščanec" value="${esc(ui.query)}" autocomplete="off">
+      <div class="chips-row" id="groupChips" aria-label="Skupine"></div>
+      <div class="chips-row" id="storeChips" aria-label="Trgovine">
+        ${stores.map(([id]) => `<button type="button" class="fchip${ui.stores.includes(id) ? ' on' : ''}" data-store="${esc(id)}">${esc(STORE_NAMES[id] ?? id)}</button>`).join('')}
+      </div>
+      <div class="chips-row small">
+        ${[0, 20, 30, 50].map(v => `<button type="button" class="fchip${ui.minDisc === v ? ' on' : ''}" data-disc="${v}">${v ? `−${v} % in več` : 'Vsi popusti'}</button>`).join('')}
+        <button type="button" class="fchip${ui.noCard ? ' on' : ''}" data-toggle="noCard">Brez kartice</button>
+        <button type="button" class="fchip${ui.upcoming ? ' on' : ''}" data-toggle="upcoming">Tudi prihodnje</button>
       </div>
       <div id="dealList"></div>
     </section>
-    <p class="muted small">Cene so z javnih strani trgovin in iz uvoženega Hoferjevega letaka. V posamezni trgovini se lahko razlikujejo. Mercatorjeve cene so iz spletne trgovine Mercator Online in se lahko razlikujejo od cen v prodajalni. Spar ni vključen.</p>`;
 
+    <section class="card hofer-card">
+      <div>
+        <h2>Hoferjev letak</h2>
+        <p class="muted small">${hofer.deals
+          ? (hoferExpired ? `Letak (${esc(hoferPeriod)}) je potekel. Uvozi novega.` : `Letak ${esc(hoferPeriod)} · ${hoferDeals.length} izdelkov`)
+          : 'Posebna ponudba in znižane cene s hofer.si se berejo samodejno. Popusti (stara cena, −%) so samo v letaku: prenesi ga (PDF) in izberi tukaj.'}</p>
+        <p class="muted small" id="hoferStatus" hidden></p>
+      </div>
+      <div class="hofer-actions">
+        <a class="btn ghost" href="${HOFER_LEAFLETS}" target="_blank" rel="noopener noreferrer">1. Odpri letake ↗</a>
+        <label class="btn${hoferExpired ? ' primary' : ''}">2. Uvozi PDF<input type="file" accept="application/pdf,.pdf" id="hoferFile" hidden></label>
+      </div>
+    </section>
+    <p class="muted small">Cene so z javnih strani trgovin in iz uvoženega Hoferjevega letaka; v posamezni prodajalni se lahko razlikujejo. Mercatorjeve cene so iz spletne trgovine Mercator Online. Spar ni vključen. Skupine so določene samodejno iz imena in kategorije trgovine, zato se lahko kak izdelek znajde v napačni.</p>`;
+
+  // V pogledu »Hrana« so v »Ostalo« živila brez jasne skupine.
+  const groupName = id => (id === 'drugo' && ui.mode === 'food' ? 'Ostala hrana' : GROUP[id]?.name ?? '');
   const list = view.querySelector('#dealList');
+  const groupChips = view.querySelector('#groupChips');
+
   const drawList = () => {
+    const base = baseFilter(allDeals, ui, today);
+    const groups = groupCounts(base);
+    if (ui.group && !groups.some(g => g.id === ui.group)) ui.group = '';
+    groupChips.innerHTML = `<button type="button" class="fchip${ui.group ? '' : ' on'}" data-group="">${ui.mode === 'food' ? 'Vsa hrana' : 'Vse'} <span>${base.length}</span></button>`
+      + groups.map(g => `<button type="button" class="fchip${ui.group === g.id ? ' on' : ''}" data-group="${g.id}">${g.emoji} ${esc(groupName(g.id))} <span>${g.count}</span></button>`).join('');
+
+    // Pregled po skupinah, dokler ne iščeš in ne izbereš skupine.
+    if (!ui.group && !ui.query.trim() && groups.length > 1) {
+      list.innerHTML = byGroup(base, ui.sort, 4).map(g => `
+        <div class="deal-group">
+          <button type="button" class="deal-group-head" data-group="${g.id}"><span>${g.emoji} ${esc(groupName(g.id))}</span><span class="muted small">${esc(nDeals(g.count))} ›</span></button>
+          <div class="deal-list">${g.top.map(d => dealRow(d, today)).join('')}</div>
+        </div>`).join('') || '<p class="muted small">Ni zadetkov.</p>';
+      return;
+    }
     const all = filterDeals(allDeals, ui, today);
     list.innerHTML = all.length
-      ? `<p class="muted small">${all.length} ${all.length === 1 ? 'akcija' : all.length === 2 ? 'akciji' : all.length < 5 ? 'akcije' : 'akcij'}</p>
+      ? `<p class="muted small">${esc(nDeals(all.length))}${ui.group ? ` · ${esc(groupName(ui.group))}` : ''}</p>
          <div class="deal-list">${all.slice(0, ui.shown).map(d => dealRow(d, today)).join('')}</div>
          ${all.length > ui.shown ? '<button class="btn ghost" id="dealMore">Pokaži več</button>' : ''}`
-      : '<p class="muted small">Ni zadetkov.</p>';
+      : '<p class="muted small">Ni zadetkov. Poskusi brez katerega od filtrov.</p>';
     list.querySelector('#dealMore')?.addEventListener('click', () => { ui.shown += PAGE; drawList(); });
   };
+  const update = (changes = {}) => {
+    Object.assign(ui, changes, { shown: PAGE });
+    saveUi();
+    drawList();
+  };
   drawList();
+
+  // Klik na čip ali glavo skupine.
+  view.querySelector('.deals-browse').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.mode) {
+      view.querySelectorAll('[data-mode]').forEach(x => x.classList.toggle('on', x === b));
+      update({ mode: b.dataset.mode, group: '' });
+    } else if (b.dataset.group !== undefined) {
+      update({ group: b.dataset.group });
+      if (b.classList.contains('deal-group-head')) view.querySelector('#groupChips').scrollIntoView({ block: 'start', behavior: 'smooth' });
+    } else if (b.dataset.store) {
+      const on = !ui.stores.includes(b.dataset.store);
+      b.classList.toggle('on', on);
+      update({ stores: on ? [...ui.stores, b.dataset.store] : ui.stores.filter(s => s !== b.dataset.store) });
+    } else if (b.dataset.disc !== undefined) {
+      view.querySelectorAll('[data-disc]').forEach(x => x.classList.toggle('on', x === b));
+      update({ minDisc: Number(b.dataset.disc) });
+    } else if (b.dataset.toggle) {
+      const k = b.dataset.toggle;
+      b.classList.toggle('on', !ui[k]);
+      update({ [k]: !ui[k] });
+    }
+  });
 
   let timer;
   view.querySelector('#dealQuery').addEventListener('input', e => {
     clearTimeout(timer);
-    timer = setTimeout(() => { ui.query = e.target.value; ui.shown = PAGE; drawList(); }, 200);
+    timer = setTimeout(() => update({ query: e.target.value }), 200);
   });
-  view.querySelector('#dealStore').addEventListener('change', e => { ui.store = e.target.value; ui.shown = PAGE; drawList(); });
-  view.querySelector('#dealSort').addEventListener('change', e => { ui.sort = e.target.value; ui.shown = PAGE; drawList(); });
-  view.querySelector('#dealFood').addEventListener('change', e => { ui.food = e.target.checked; ui.shown = PAGE; drawList(); });
+  view.querySelector('#dealSort').addEventListener('change', e => update({ sort: e.target.value }));
 
   view.querySelector('#watchForm').addEventListener('submit', async e => {
     e.preventDefault();
@@ -177,7 +257,7 @@ export function renderDeals(view) {
     status.textContent = 'Berem letak …';
     try {
       const pages = await readLeafletPdf(file, p => { status.textContent = `Berem letak … ${Math.round(p * 100)} %`; });
-      const deals = parseLeaflet(pages, today);
+      const deals = parseLeaflet(pages, today).map(enrichDeal);
       if (!deals.length) {
         status.textContent = 'V tem PDF-ju ni bilo mogoče najti izdelkov s cenami. Je to Hoferjev letak?';
         return;

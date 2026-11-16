@@ -1,7 +1,7 @@
 // Testi iskanja, filtrov in ujemanja »Zate« (js/deals.js).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { keywordOf, nameHas, isCurrent, dealsForYou, filterDeals, validity, mergeLeaflet } from '../js/deals.js';
+import { keywordOf, nameHas, isCurrent, dealsForYou, filterDeals, validity, mergeLeaflet, groupCounts, byGroup, unitLabel, isFoodDeal } from '../js/deals.js';
 
 const TODAY = '2026-11-14';
 const d = (n, over = {}) => ({ s: 'tus', n, p: 1, o: null, d: null, food: true, ...over });
@@ -47,15 +47,46 @@ test('dealsForYou: spremljano in kupljeno, brez dvojnikov in poteklih, po popust
 
 test('filterDeals: trgovina, hrana, iskanje in razvrščanje', () => {
   const deals = [
-    d('Banana', { p: 1.2, d: 20 }),
-    d('Detergent', { p: 6, d: 40, food: false }),
-    d('Avokado', { p: 0.8, s: 'lidl' }),
-    d('Hofer sir', { p: 2, s: 'hofer', food: null }),
+    d('Banana', { p: 1.2, d: 20, g: 'sadje' }),
+    d('Detergent', { p: 6, d: 40, food: false, g: 'drogerija' }),
+    d('Avokado', { p: 0.8, s: 'lidl', g: 'sadje' }),
+    d('Hofer sir', { p: 2, s: 'hofer', food: null, g: 'mlecni' }),
+    d('Neznano', { p: 3, s: 'hofer', food: null }),
   ];
-  assert.deepEqual(filterDeals(deals, {}, TODAY).map(x => x.n), ['Detergent', 'Banana', 'Avokado', 'Hofer sir']);
-  assert.deepEqual(filterDeals(deals, { food: true, sort: 'price' }, TODAY).map(x => x.n), ['Avokado', 'Banana', 'Hofer sir']);
+  assert.deepEqual(filterDeals(deals, {}, TODAY).map(x => x.n), ['Detergent', 'Banana', 'Avokado', 'Hofer sir', 'Neznano']);
+  assert.deepEqual(filterDeals(deals, { mode: 'food', sort: 'price' }, TODAY).map(x => x.n), ['Avokado', 'Banana', 'Hofer sir']);
   assert.deepEqual(filterDeals(deals, { store: 'lidl' }, TODAY).map(x => x.n), ['Avokado']);
+  assert.deepEqual(filterDeals(deals, { stores: ['lidl', 'hofer'], mode: 'food' }, TODAY).map(x => x.n), ['Avokado', 'Hofer sir']);
   assert.deepEqual(filterDeals(deals, { query: 'ban', sort: 'name' }, TODAY).map(x => x.n), ['Banana']);
+  assert.deepEqual(filterDeals(deals, { group: 'sadje', sort: 'price' }, TODAY).map(x => x.n), ['Avokado', 'Banana']);
+  assert.deepEqual(filterDeals(deals, { group: 'drugo' }, TODAY).map(x => x.n), ['Neznano']);
+});
+
+test('filterDeals: popust, kartica, prihodnje akcije, cena na enoto', () => {
+  const deals = [
+    d('Mleko A', { d: 10, up: 1.2, uu: 'l', g: 'mlecni' }),
+    d('Mleko B', { d: 35, up: 0.9, uu: 'l', plus: true, g: 'mlecni' }),
+    d('Mleko C', { d: 50, f: '2026-11-19', to: '2026-11-25', g: 'mlecni' }),
+    d('Sir', { d: 25, up: 8, uu: 'kg', g: 'mlecni' }),
+  ];
+  assert.deepEqual(filterDeals(deals, { minDisc: 30 }, TODAY).map(x => x.n), ['Mleko C', 'Mleko B']);
+  assert.deepEqual(filterDeals(deals, { minDisc: 30, upcoming: false }, TODAY).map(x => x.n), ['Mleko B']);
+  assert.deepEqual(filterDeals(deals, { noCard: true, upcoming: false }, TODAY).map(x => x.n), ['Sir', 'Mleko A']);
+  // Prevladujoča enota (l) najprej, nato kg, nato brez cene na enoto.
+  assert.deepEqual(filterDeals(deals, { sort: 'unit' }, TODAY).map(x => x.n), ['Mleko B', 'Mleko A', 'Sir', 'Mleko C']);
+});
+
+test('groupCounts, byGroup, unitLabel, isFoodDeal', () => {
+  const deals = [d('a', { g: 'meso', d: 10 }), d('b', { g: 'meso', d: 40 }), d('c', { g: 'sadje' }), d('x', { g: undefined, food: false })];
+  assert.deepEqual(groupCounts(deals).map(g => [g.id, g.count]), [['sadje', 1], ['meso', 2], ['drugo', 1]]);
+  const meso = byGroup(deals, 'discount', 1).find(g => g.id === 'meso');
+  assert.deepEqual(meso.top.map(x => x.n), ['b']);
+  assert.equal(unitLabel({ up: 6.98, uu: 'kg' }), '6,98 €/kg');
+  assert.equal(unitLabel({}), '');
+  assert.equal(isFoodDeal({ g: 'alkohol' }), true);
+  assert.equal(isFoodDeal({ g: 'drogerija' }), false);
+  assert.equal(isFoodDeal({ food: null }), false);
+  assert.equal(isFoodDeal({ food: true }), true);
 });
 
 test('mergeLeaflet: izdelek iz letaka, ki je tudi na spletu, ne podvoji in prinese popust', () => {

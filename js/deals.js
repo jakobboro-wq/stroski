@@ -1,6 +1,7 @@
 // Akcije trgovin: iskanje, filtri in ujemanje z izdelki, ki jih kupuješ ali spremljaš. Brez brskalnika, da se da preizkusiti.
 
 import { normalize } from './categorize.js';
+import { GROUPS, isFoodGroup } from './products.js';
 
 export const DEALS_URL = 'https://raw.githubusercontent.com/jakobboro-wq/stroski/akcije/deals.json';
 export const STORE_NAMES = { tus: 'Tuš', lidl: 'Lidl', hofer: 'Hofer', mercator: 'Mercator', eurospin: 'Eurospin', spar: 'Spar' };
@@ -65,16 +66,67 @@ export function dealsForYou(deals, { watch = [], bought = [] }, today, limit = 4
   return out.sort((a, b) => (b.deal.d ?? 0) - (a.deal.d ?? 0)).slice(0, limit);
 }
 
-/** Iskanje in filtri za seznam vseh akcij. */
-export function filterDeals(deals, { query = '', store = '', food = false, sort = 'discount' }, today) {
-  const list = deals.filter(d => isCurrent(d, today) && (!store || d.s === store) && (!food || d.food !== false) && nameHas(d, query));
-  const by = {
-    discount: (a, b) => (b.d ?? -1) - (a.d ?? -1) || a.p - b.p,
-    price: (a, b) => a.p - b.p,
-    name: (a, b) => a.n.localeCompare(b.n, 'sl'),
-  }[sort] ?? (() => 0);
-  return list.sort(by);
+/** Hrana: po skupini, sicer po podatku trgovine. Neznano ni hrana (da pogled »Hrana« ostane čist). */
+export const isFoodDeal = d => (d.g ? isFoodGroup(d.g) : d.food === true);
+/** Akcija se začne šele kasneje (npr. Eurospin za naslednji teden). */
+export const isUpcoming = (d, today) => !!d.f && d.f > today;
+
+const SORTS = {
+  discount: (a, b) => (b.d ?? -1) - (a.d ?? -1) || a.p - b.p,
+  price: (a, b) => a.p - b.p,
+  // Cena na kg/l: brez podatka na konec, kg in l ločeno (najprej kg).
+  unit: (a, b) => (a.up == null) - (b.up == null) || (a.uu ?? '').localeCompare(b.uu ?? '') || (a.up ?? 0) - (b.up ?? 0) || a.p - b.p,
+  name: (a, b) => a.n.localeCompare(b.n, 'sl'),
+};
+
+/**
+ * Filtri brez skupine (za štetje po skupinah) in s skupino (za seznam).
+ * opts: { query, store | stores[], mode: 'food'|'all', food (staro: kot mode food), group, minDisc, noCard, upcoming }
+ */
+export function baseFilter(deals, opts, today) {
+  const { query = '', store = '', stores = [], mode = 'all', food = false, minDisc = 0, noCard = false, upcoming = true } = opts;
+  const pick = stores.length ? new Set(stores) : store ? new Set([store]) : null;
+  const onlyFood = food || mode === 'food';
+  return deals.filter(d => isCurrent(d, today)
+    && (upcoming || !isUpcoming(d, today))
+    && (!pick || pick.has(d.s))
+    && (!onlyFood || isFoodDeal(d))
+    && (!minDisc || (d.d ?? 0) >= minDisc)
+    && (!noCard || !d.plus)
+    && nameHas(d, query));
 }
+
+/** Iskanje in filtri za seznam vseh akcij. */
+export function filterDeals(deals, opts, today) {
+  const { group = '', sort = 'discount' } = opts;
+  const list = baseFilter(deals, opts, today).filter(d => !group || (d.g ?? 'drugo') === group);
+  if (sort === 'unit') {
+    // Najprej enota, ki prevladuje (pri »mleko« €/l), da se primerja primerljivo.
+    const c = {};
+    for (const d of list) if (d.uu) c[d.uu] = (c[d.uu] ?? 0) + 1;
+    const main = Object.entries(c).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const rank = d => (d.up == null ? 2 : d.uu === main ? 0 : 1);
+    return list.sort((a, b) => rank(a) - rank(b) || SORTS.unit(a, b));
+  }
+  return list.sort(SORTS[sort] ?? (() => 0));
+}
+
+/** Število akcij po skupinah (v vrstnem redu GROUPS), samo neprazne. */
+export function groupCounts(list) {
+  const c = {};
+  for (const d of list) { const g = d.g ?? 'drugo'; c[g] = (c[g] ?? 0) + 1; }
+  return GROUPS.filter(g => c[g.id]).map(g => ({ ...g, count: c[g.id] }));
+}
+
+/** Pregled po skupinah: najboljše akcije vsake skupine. */
+export function byGroup(list, sort = 'discount', perGroup = 4) {
+  const sorted = [...list].sort(SORTS[sort] ?? SORTS.discount);
+  return groupCounts(list).map(g => ({ ...g, top: sorted.filter(d => (d.g ?? 'drugo') === g.id).slice(0, perGroup) }));
+}
+
+const eur = v => v.toFixed(2).replace('.', ',');
+/** »6,98 €/kg« ali ''. */
+export const unitLabel = d => (d.up != null && d.uu ? `${eur(d.up)} €/${d.uu}` : '');
 
 const fmtDay = iso => { const [, m, d] = iso.split('-'); return `${+d}. ${+m}.`; };
 /** »do 18. 11.«, »od 12. 11.« ali nič. */

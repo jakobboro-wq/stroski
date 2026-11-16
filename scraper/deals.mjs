@@ -3,6 +3,7 @@
 // Zaženi: node scraper/deals.mjs
 
 import { writeFile, readFile, mkdir } from 'node:fs/promises';
+import { enrichDeal } from '../js/products.js';
 
 const UA = 'Mozilla/5.0 (compatible; stroski-app/1.0; osebni sledilnik cen; +https://github.com/jakobboro-wq/stroski)';
 const PAUSE_MS = 1500; // premor med zahtevami, da trgovine ne obremenjujemo
@@ -336,7 +337,7 @@ async function main() {
   if (!prev) console.warn(`Ni ${PREV_FILE}: ob napaki ne bo včerajšnjih podatkov.`);
   const results = {};
   for (const [id, fn] of Object.entries(STORES)) {
-    try { results[id] = { list: await fn() }; } catch (e) { results[id] = { error: e.message }; }
+    try { results[id] = { list: (await fn()).map(enrichDeal) }; } catch (e) { results[id] = { error: e.message }; }
   }
   const out = combine(results, prev);
   for (const [id, st] of Object.entries(out.stores)) console.log(id, st);
