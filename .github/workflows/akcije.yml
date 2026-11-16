@@ -1,6 +1,7 @@
 # Vsako jutro pobere akcije z javnih strani trgovin in jih shrani na vejo "akcije" (datoteka deals.json).
 # Veja se vsakič prepiše, da zgodovina ne raste. Trgovina, ki ne uspe, obdrži včerajšnje akcije,
-# zagon pa se na koncu označi kot neuspešen (GitHub pošlje e-pošto). Aplikacija bere:
+# zagon pa se na koncu označi kot neuspešen (GitHub pošlje e-pošto).
+# Zgodovina cen gre na vejo »cene« (dnevni posnetki, z zgodovino) in iz nje stats.json. Aplikacija bere:
 # https://raw.githubusercontent.com/jakobboro-wq/stroski/akcije/deals.json
 name: Akcije
 
@@ -33,6 +34,25 @@ jobs:
           git fetch -q --depth=1 origin akcije && git show FETCH_HEAD:deals.json > data/prev.json || echo "Veje akcije še ni."
       - name: Poberi akcije
         run: node scraper/deals.mjs
+      - name: Zgodovina cen (veja cene)
+        id: cene
+        continue-on-error: true
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          URL="https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads origin cene >/dev/null; then
+            git clone -q --depth 1 --branch cene "$URL" cene
+          else
+            mkdir cene && git -C cene init -q -b cene && git -C cene remote add origin "$URL"
+          fi
+          node scraper/history.mjs cene data/deals.json
+          cd cene
+          git config user.name "akcije-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Cene $(date -u +%F)" || echo "Ni sprememb."
+          git push -q origin cene
       - name: Shrani na vejo akcije
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -45,6 +65,11 @@ jobs:
           git add deals.json
           git commit -q -m "Akcije $(date -u +%F)"
           git push -q -f "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" akcije
+      - name: Preveri zgodovino cen
+        if: steps.cene.outcome == 'failure'
+        run: |
+          echo "::error::Zgodovina cen se danes ni posodobila (akcije so vseeno objavljene)."
+          exit 1
       - name: Preveri, ali so uspele vse trgovine
         run: |
           node -e "

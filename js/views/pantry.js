@@ -1,9 +1,9 @@
 // Zavihek Shramba: zaloga iz slikanih računov, napoved, kdaj kaj zmanjka, kdaj kupiti in prihranki.
 
 import { state, getSetting, saveSetting } from '../store.js';
-import { pantry, savings, spendByGroup, recommendations, cheaperElsewhere } from '../pantry.js';
+import { pantry, savings, spendByGroup, recommendations, cheaperElsewhere, statsRows, predictedDeal } from '../pantry.js';
 import { isFoodGroup, GROUP } from '../products.js';
-import { STORE_NAMES, validity, unitLabel } from '../deals.js';
+import { STORE_NAMES, STATS_URL, validity, unitLabel } from '../deals.js';
 import { availableDeals } from './deals.js';
 import { shopHeader, bindShopHeader } from './shop-nav.js';
 import { esc, money, todayISO, toast } from '../ui.js';
@@ -13,6 +13,19 @@ const daysText = n => (n <= 0 ? 'zmanjkalo' : n === 1 ? 'jutri' : n < 5 ? `čez 
 const everyText = d => (d < 1.5 ? 'vsak dan' : d < 10 ? `vsakih ${Math.round(d)} dni` : d < 45 ? `vsakih ~${Math.round(d / 7)} ${Math.round(d / 7) === 1 ? 'teden' : Math.round(d / 7) === 2 ? 'tedna' : 'tedne'}` : `vsakih ~${Math.round(d / 30)} mes.`);
 const prettyName = n => (n === n.toUpperCase() ? n[0] + n.slice(1).toLowerCase() : n);
 const UI_KEY = 'pantry-ui';
+const STATS_KEY = 'stats-cache';
+
+// Zgodovina cen (cikli akcij) z veje »cene«: enkrat na zagon, medtem shranjena kopija.
+let stats = null;
+let statsLoading = null;
+function loadStats(onFresh) {
+  if (!stats) { try { stats = JSON.parse(localStorage.getItem(STATS_KEY)); } catch { stats = null; } }
+  statsLoading ??= fetch(STATS_URL, { cache: 'no-cache' })
+    .then(r => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
+    .then(json => { stats = json; try { localStorage.setItem(STATS_KEY, JSON.stringify(json)); } catch { /* ni nujno */ } onFresh(); })
+    .catch(err => console.warn('Zgodovina cen', err));
+  return statsRows(stats);
+}
 const ui = (() => { try { return { food: true, ...JSON.parse(localStorage.getItem(UI_KEY)) }; } catch { return { food: true }; } })();
 
 function dealLine(d, today) {
@@ -26,7 +39,9 @@ function recRow(r, today) {
   const when = it.left == null ? '' : daysText(it.left);
   const why = {
     now: `${it.left <= 0 ? 'Zmanjkalo je.' : `Zmanjka ${when}.`} Zdaj je v akciji${r.similar ? ' podoben izdelek' : ''}:`,
-    wait: `Zdrži še do ${fmtDay(it.runout)}. Počakaj na akcijo od ${fmtDay(r.deal?.f ?? today)}:`,
+    wait: r.predicted
+      ? `Zdrži še do ${fmtDay(it.runout)}. Po zgodovini cen bo v akciji okoli ${fmtDay(r.predicted.next)} (${STORE_NAMES[r.predicted.s] ?? r.predicted.s}, običajno ${money(r.predicted.typ)}, vsakih ~${r.predicted.cy} dni). Napoved, ne objava.`
+      : `Zdrži še do ${fmtDay(it.runout)}. Počakaj na akcijo od ${fmtDay(r.deal?.f ?? today)}:`,
     stock: `Kupiš ${everyText(it.daysPerPack ?? 30)}, zdaj je močno znižano. Vzemi na zalogo:`,
     buy: `${it.left <= 0 ? 'Zmanjkalo je.' : `Zmanjka ${when}.`} Akcije ni; običajno plačaš ${money(it.usual)}${it.cheapestStore ? `, najceneje si kupil v: ${it.cheapestStore}` : ''}.`,
   }[r.type];
@@ -48,7 +63,7 @@ const markButtons = it => `<div class="pt-marks">
   <button type="button" class="btn ghost small" data-have="${esc(it.key)}" title="Še imam, napoved je prezgodnja">Še imam</button>
 </div>`;
 
-function stockRow(it) {
+function stockRow(it, rows = [], today = '') {
   const full = it.daysPerPack ? it.daysPerPack * it.lastQty : null;
   const pctLeft = full && it.left != null ? Math.max(0, Math.min(100, Math.round((it.left / full) * 100))) : null;
   const status = it.status === 'unknown' ? 'premalo nakupov za napoved' : daysText(it.left);
@@ -58,6 +73,7 @@ function stockRow(it) {
     `običajno ${money(it.usual)}`,
     it.confidence === 'low' ? 'groba ocena' : null,
   ].filter(Boolean).join(' · ');
+  const pred = rows.length && it.count >= 2 ? predictedDeal(it, rows, today) : null;
   return `
     <div class="pt-item ${it.status}">
       <span class="pt-em">${it.group?.emoji ?? '🛒'}</span>
@@ -65,6 +81,7 @@ function stockRow(it) {
         <div class="pt-name">${esc(prettyName(it.name))} <span class="pt-when ${it.status}">${esc(status)}</span></div>
         ${pctLeft != null ? `<div class="pt-bar" role="img" aria-label="Ostalo približno ${pctLeft} %"><i style="width:${pctLeft}%"></i></div>` : ''}
         <div class="muted small">${esc(meta)}</div>
+        ${pred ? `<div class="deal-hist">naslednja akcija ~${esc(fmtDay(pred.next))} (${esc(STORE_NAMES[pred.s] ?? pred.s)}, ~${esc(money(pred.typ))})</div>` : ''}
       </div>
       ${it.status !== 'unknown' ? markButtons(it) : ''}
     </div>`;
@@ -80,7 +97,8 @@ export function renderPantry(view) {
   const items = ui.food ? all.filter(it => isFoodGroup(it.g)) : all;
   const repeat = items.filter(it => it.count >= 2);
   const once = items.filter(it => it.count < 2);
-  const recs = recommendations(items, deals, today);
+  const rows = loadStats(() => { if (location.hash.startsWith('#/zaloga')) renderPantry(view); });
+  const recs = recommendations(items, deals, today, { predictions: rows });
   const save = savings(tx, from, today);
   const groups = spendByGroup(tx, from, today);
   const foodSpend = groups.filter(g => isFoodGroup(g.id)).reduce((s, g) => s + g.amount, 0);
@@ -116,8 +134,8 @@ export function renderPantry(view) {
 
     <section class="card">
       <div class="card-head"><h2>Zaloga</h2><span class="muted small">${repeat.length} izdelkov, ki jih kupuješ redno</span></div>
-      ${repeat.length ? repeat.map(stockRow).join('') : '<p class="muted small">Ko kak izdelek kupiš drugič, se tu pojavi z napovedjo.</p>'}
-      ${once.length ? `<details class="pt-once"><summary>Kupljeno enkrat (${once.length})</summary>${once.map(stockRow).join('')}</details>` : ''}
+      ${repeat.length ? repeat.map(it => stockRow(it, rows, today)).join('') : '<p class="muted small">Ko kak izdelek kupiš drugič, se tu pojavi z napovedjo.</p>'}
+      ${once.length ? `<details class="pt-once"><summary>Kupljeno enkrat (${once.length})</summary>${once.map(it => stockRow(it)).join('')}</details>` : ''}
     </section>
 
     ${elsewhere.length ? `
@@ -150,7 +168,7 @@ export function renderPantry(view) {
       <div class="card-head"><h2>Največji prihranki ta mesec</h2></div>
       ${save.best.map(b => `<div class="pt-group"><span>${esc(prettyName(b.name))} <span class="muted small">${esc(fmtDay(b.date))}, ${esc(b.store)}</span></span><span class="muted small">${esc(money(b.paid))} namesto ${esc(money(b.usual))}</span><b class="good">−${esc(money(b.saved))}</b></div>`).join('')}
     </section>` : ''}
-    <p class="muted small">Napoved temelji na razmikih med tvojimi nakupi (mediana, deljena s kupljeno količino). Izdelke loči po imenu na računu, zato je isti izdelek iz dveh trgovin lahko dvakrat.</p>`}`;
+    <p class="muted small">Napoved temelji na razmikih med tvojimi nakupi (mediana, deljena s kupljeno količino). Izdelke loči po imenu na računu, zato je isti izdelek iz dveh trgovin lahko dvakrat. ${stats?.since ? `Zgodovina cen se zbira od ${esc(fmtDay(stats.since))} (${stats.days} ${stats.days === 1 ? 'dan' : 'dni'}); cikli akcij se pokažejo, ko je izdelek v akciji vsaj dvakrat.` : ''}</p>`}`;
 
   bindShopHeader(view);
   view.querySelectorAll('[data-food]').forEach(b => b.addEventListener('click', () => {

@@ -228,6 +228,8 @@ export function parseMercator(json) {
       c: titleCase(x.category1), food: x.category1 ? !MERCATOR_NONFOOD.test(x.category1) : null, t,
       f: mercatorDay(disc?.valid_from), to: mercatorDay(disc?.valid_to, true),
       plus: disc?.group_type === 'pika_discount',
+      // Najnižja cena v 30 dneh pred znižanjem (Mercator jo objavi, ker jo zahteva zakon).
+      l30: num(x.pc30_price) > 0 ? num(x.pc30_price) : null,
     });
   }
   return out;

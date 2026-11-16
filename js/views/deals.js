@@ -1,7 +1,7 @@
 // Zavihek Akcije: akcije trgovin (osvežene vsako jutro). Privzeto hrana, pregled po skupinah živil.
 
 import { state, getSetting, saveSetting } from '../store.js';
-import { DEALS_URL, STORE_NAMES, dealsForYou, filterDeals, baseFilter, groupCounts, byGroup, validity, mergeLeaflet, isFoodDeal, isUpcoming, unitLabel } from '../deals.js';
+import { DEALS_URL, STORE_NAMES, dealsForYou, filterDeals, baseFilter, groupCounts, byGroup, validity, mergeLeaflet, isFoodDeal, isUpcoming, unitLabel, historyNotes, notReal } from '../deals.js';
 import { GROUP, enrichDeal } from '../products.js';
 import { readLeafletPdf, parseLeaflet } from '../hofer.js';
 import { shopHeader, bindShopHeader } from './shop-nav.js';
@@ -18,7 +18,7 @@ let failed = false;
 let enriched = { src: null, list: [] };
 
 // Filtri ostanejo med obiski (samo na tej napravi). Iskanje se ne shrani.
-const DEFAULT_UI = { mode: 'food', group: '', stores: [], sort: 'discount', minDisc: 0, noCard: false, upcoming: false };
+const DEFAULT_UI = { mode: 'food', group: '', stores: [], sort: 'discount', minDisc: 0, noCard: false, upcoming: false, realOnly: false };
 const ui = { ...DEFAULT_UI, ...loadUi(), query: '', shown: PAGE };
 function loadUi() {
   try { return JSON.parse(localStorage.getItem(UI_KEY)) ?? {}; } catch { return {}; }
@@ -73,10 +73,11 @@ function dealRow(d, today, match = null) {
   const card = d.plus && !/kartic|plus/i.test(d.t ?? '') ? 's kartico' : null;
   const meta = [STORE_NAMES[d.s] ?? d.s, d.t, card, validity(d, today), d.q, why].filter(Boolean);
   const unit = unitLabel(d);
+  const notes = historyNotes(d);
   return `
-    <a class="deal${isUpcoming(d, today) ? ' later' : ''}" href="${esc(d.u ?? '#')}" target="_blank" rel="noopener noreferrer">
+    <a class="deal${isUpcoming(d, today) ? ' later' : ''}${notReal(d) ? ' fake' : ''}" href="${esc(d.u ?? '#')}" target="_blank" rel="noopener noreferrer">
       ${d.i ? `<img src="${esc(d.i)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<span class="deal-noimg">${GROUP[d.g]?.emoji ?? '🏷️'}</span>`}
-      <span class="deal-main"><span class="deal-name">${esc(d.n)}</span><span class="deal-meta">${esc(meta.join(' · '))}</span></span>
+      <span class="deal-main"><span class="deal-name">${esc(d.n)}</span><span class="deal-meta">${esc(meta.join(' · '))}</span>${notes.length ? `<span class="deal-hist">${esc(notes.join(' · '))}</span>` : ''}</span>
       <span class="deal-price"><b>${esc(money(d.p))}</b>${d.d ? `<em>−${d.d} %</em>` : d.o ? `<s>${esc(money(d.o))}</s>` : ''}${unit ? `<small>${esc(unit)}</small>` : ''}</span>
     </a>`;
 }
@@ -160,6 +161,7 @@ export function renderDeals(view) {
         ${[0, 20, 30, 50].map(v => `<button type="button" class="fchip${ui.minDisc === v ? ' on' : ''}" data-disc="${v}">${v ? `−${v} % in več` : 'Vsi popusti'}</button>`).join('')}
         <button type="button" class="fchip${ui.noCard ? ' on' : ''}" data-toggle="noCard">Brez kartice</button>
         <button type="button" class="fchip${ui.upcoming ? ' on' : ''}" data-toggle="upcoming">Tudi prihodnje</button>
+        <button type="button" class="fchip${ui.realOnly ? ' on' : ''}" data-toggle="realOnly" title="Skrij akcije, ki niso nižje od najnižje cene v zadnjih 30 dneh">Prava znižanja</button>
       </div>
       <div id="dealList"></div>
     </section>

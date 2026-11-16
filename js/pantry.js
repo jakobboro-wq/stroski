@@ -133,6 +133,19 @@ export function matchStrength(item, deal) {
   return hits >= 2 || (hits === 1 && words.length === 1) ? 2 : hits ? 1 : 0;
 }
 
+/** stats.json (zgodovina cen) → seznam { id, s, n, g, ep, cy, next, on, lo, typ, reg, last }. */
+export function statsRows(json) {
+  if (!json?.cols || !Array.isArray(json.rows)) return [];
+  return json.rows.map(r => Object.fromEntries(json.cols.map((c, i) => [c, r[i]])));
+}
+
+/** Napovedana naslednja akcija za isti izdelek (iz ciklov akcij), ki zdaj ni v akciji. */
+export function predictedDeal(item, rows, today) {
+  return rows
+    .filter(r => !r.on && r.next && r.next > today && (!item.g || !r.g || r.g === item.g) && matchStrength(item, r) === 2)
+    .sort((a, b) => a.next.localeCompare(b.next) || a.typ - b.typ)[0] ?? null;
+}
+
 /** Akcije, ki ustrezajo izdelku z računa: ista ključna beseda in (če je znana) ista skupina. */
 export function matchingDeals(item, deals, today, { upcoming = false } = {}) {
   const kw = keywordOf(item.name);
@@ -151,7 +164,7 @@ const itemUnitPrice = (name, price) => { const s = packSize(name); return s ? { 
  * - stock: zdržljiv izdelek, ki ga kupuješ redno, je zdaj močno znižan (na zalogo),
  * - buy: zmanjkuje, akcije ni (z najcenejšo trgovino iz tvojih nakupov).
  */
-export function recommendations(items, deals, today, { horizon = 7, stockDiscount = 25 } = {}) {
+export function recommendations(items, deals, today, { horizon = 7, stockDiscount = 25, predictions = [] } = {}) {
   const out = [];
   for (const it of items) {
     if (it.status === 'unknown' && it.count < 2) continue;
@@ -168,7 +181,10 @@ export function recommendations(items, deals, today, { horizon = 7, stockDiscoun
     else if (needSoon && it.left > 0) {
       // Čakanje se splača samo na isti izdelek.
       const wait = later.filter(d => d.f <= it.runout && cheaper(d) && matchStrength(it, d) === 2).sort((a, b) => a.f.localeCompare(b.f) || (b.d ?? 0) - (a.d ?? 0))[0];
+      // Ni objavljene akcije: morda je po zgodovini cen napovedana pred koncem zaloge.
+      const pred = wait ? null : predictedDeal(it, predictions, today);
       if (wait) out.push({ type: 'wait', item: it, deal: wait, similar: false });
+      else if (pred && pred.next <= it.runout && pred.typ < it.usual) out.push({ type: 'wait', item: it, deal: null, predicted: pred });
       else if (it.left <= 3) out.push({ type: 'buy', item: it, deal: null });
     } else if (needSoon) out.push({ type: 'buy', item: it, deal: null });
     else if (bestNow && !similar(bestNow) && STORABLE.has(it.g) && it.count >= 2 && ((bestNow.d ?? 0) >= stockDiscount || bestNow.p <= it.usual * 0.8)) {

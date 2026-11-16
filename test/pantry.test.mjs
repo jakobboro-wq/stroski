@@ -1,7 +1,7 @@
 // Testi zaloge, napovedi, prihrankov in priporočil (js/pantry.js) na sintetični zgodovini računov.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { purchases, pantry, savings, spendByGroup, recommendations, cheaperElsewhere, matchingDeals, matchStrength } from '../js/pantry.js';
+import { purchases, pantry, savings, spendByGroup, recommendations, cheaperElsewhere, matchingDeals, matchStrength, statsRows, predictedDeal } from '../js/pantry.js';
 import { parseReceipt, receiptTransactions, suggestItemCategory, qtyOf } from '../js/receipt.js';
 
 const rc = (date, store, items) => ({ source: 'receipt', date, description: store, amount: -1, items });
@@ -137,4 +137,22 @@ test('recommendations: na zalogo samo isti izdelek', () => {
   const items = pantry(HISTORY.slice(0, 4), '2026-11-02');
   const other = { s: 'mercator', n: 'Mleta kava, Zlatna Džezva, 400 g', p: 3.99, d: 40, g: 'zajtrk' };
   assert.ok(!recommendations(items, [other], '2026-11-02').some(r => r.type === 'stock'));
+});
+
+test('zgodovina cen: napovedana akcija pred koncem zaloge → počakaj', () => {
+  const json = { cols: ['id', 's', 'n', 'g', 'ep', 'cy', 'next', 'on', 'lo', 'typ', 'reg', 'last'],
+    rows: [['m1', 'mercator', 'Kava Barcaffe classic, 400 g', 'zajtrk', 3, 28, '2026-11-19', 0, 4.49, 4.99, 6.49, '2026-10-22']] };
+  const rows = statsRows(json);
+  assert.equal(rows[0].typ, 4.99);
+  assert.equal(statsRows(null).length, 0);
+  const items = pantry(HISTORY.slice(0, 5), '2026-11-16'); // kava zdrži do 21. 11.
+  const coffee = items.find(x => x.key.startsWith('kava'));
+  assert.equal(predictedDeal(coffee, rows, '2026-11-16').s, 'mercator');
+  assert.equal(predictedDeal(coffee, rows, '2026-11-20'), null); // napoved je že mimo
+  const rec = recommendations(items, [], '2026-11-16', { predictions: rows }).find(r => r.item === coffee);
+  assert.equal(rec.type, 'wait');
+  assert.equal(rec.predicted.next, '2026-11-19');
+  // Napovedana šele po koncu zaloge → ne čakaj
+  const late = statsRows({ ...json, rows: [[...json.rows[0].slice(0, 6), '2026-11-28', ...json.rows[0].slice(7)]] });
+  assert.notEqual(recommendations(items, [], '2026-11-16', { predictions: late }).find(r => r.item === coffee)?.type, 'wait');
 });

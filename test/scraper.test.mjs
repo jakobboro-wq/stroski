@@ -175,6 +175,12 @@ test('Mercator: ob nakupu 2 ali več je cena na kos s popustom', () => {
   assert.equal(d.b, '1 kg = 3,68');
 });
 
+test('Mercator: najnižja cena v 30 dneh (pc30_price)', () => {
+  const [a, b] = parseMercator({ products: [merc({ cinv: '1', pc30_price: '1.99', discounts: [mDisc()] }), merc({ cinv: '2', pc30_price: '0.00', discounts: [mDisc()] })] });
+  assert.equal(a.l30, 1.99);
+  assert.equal(b.l30, null);
+});
+
 test('Mercator: »ob nakupu 0 ali več« ni pogojni popust', () => {
   const [d] = parseMercator({ products: [merc({ discounts: [mDisc({ marker_code: '100', value: '-15', hover_text: 'Ob nakupu 0 izdelkov ali več je vsak 15% ceneje.' })] })] });
   assert.equal(d.p, 1.69);

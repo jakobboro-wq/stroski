@@ -1,7 +1,7 @@
 // Testi iskanja, filtrov in ujemanja »Zate« (js/deals.js).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { keywordOf, nameHas, isCurrent, dealsForYou, filterDeals, validity, mergeLeaflet, groupCounts, byGroup, unitLabel, isFoodDeal } from '../js/deals.js';
+import { keywordOf, nameHas, isCurrent, dealsForYou, filterDeals, validity, mergeLeaflet, groupCounts, byGroup, unitLabel, isFoodDeal, historyNotes, notReal } from '../js/deals.js';
 
 const TODAY = '2026-11-14';
 const d = (n, over = {}) => ({ s: 'tus', n, p: 1, o: null, d: null, food: true, ...over });
@@ -100,4 +100,15 @@ test('mergeLeaflet: izdelek iz letaka, ki je tudi na spletu, ne podvoji in prine
   assert.deepEqual(out[0], { ...web[0], o: 2.49, d: 22, f: '2026-11-02', to: '2026-11-18' });
   assert.equal(out[2].n, 'SAMO V LETAKU');
   assert.deepEqual(mergeLeaflet(web, []), web);
+});
+
+test('zgodovina: lažna akcija, najceneje doslej, cikel', () => {
+  assert.equal(notReal({ p: 1.69, l30: 1.69 }), true);
+  assert.equal(notReal({ p: 1.69, l30: 1.99 }), false);
+  assert.equal(notReal({ p: 1.69 }), false);
+  assert.deepEqual(historyNotes({ p: 1.69, l30: 1.59 }), ['v 30 dneh je bilo že ceneje (1,59 €)']);
+  assert.deepEqual(historyNotes({ p: 4.99, lo: 4.49, lod: '2026-12-01', cy: 28 }), ['najceneje doslej 4,49 € (1. 12.)', 'v akciji ~vsakih 28 dni']);
+  assert.deepEqual(historyNotes({ p: 1 }), []);
+  const deals = [d('A', { l30: 1 }), d('B', { l30: 2 })];
+  assert.deepEqual(filterDeals(deals, { realOnly: true }, TODAY).map(x => x.n), ['B']);
 });

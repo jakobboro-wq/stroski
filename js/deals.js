@@ -4,6 +4,7 @@ import { normalize } from './categorize.js';
 import { GROUPS, isFoodGroup } from './products.js';
 
 export const DEALS_URL = 'https://raw.githubusercontent.com/jakobboro-wq/stroski/akcije/deals.json';
+export const STATS_URL = 'https://raw.githubusercontent.com/jakobboro-wq/stroski/cene/stats.json';
 export const STORE_NAMES = { tus: 'Tuš', lidl: 'Lidl', hofer: 'Hofer', mercator: 'Mercator', eurospin: 'Eurospin', spar: 'Spar' };
 
 // Besede, ki same po sebi ne povedo, kaj je izdelek.
@@ -84,7 +85,7 @@ const SORTS = {
  * opts: { query, store | stores[], mode: 'food'|'all', food (staro: kot mode food), group, minDisc, noCard, upcoming }
  */
 export function baseFilter(deals, opts, today) {
-  const { query = '', store = '', stores = [], mode = 'all', food = false, minDisc = 0, noCard = false, upcoming = true } = opts;
+  const { query = '', store = '', stores = [], mode = 'all', food = false, minDisc = 0, noCard = false, upcoming = true, realOnly = false } = opts;
   const pick = stores.length ? new Set(stores) : store ? new Set([store]) : null;
   const onlyFood = food || mode === 'food';
   return deals.filter(d => isCurrent(d, today)
@@ -93,7 +94,21 @@ export function baseFilter(deals, opts, today) {
     && (!onlyFood || isFoodDeal(d))
     && (!minDisc || (d.d ?? 0) >= minDisc)
     && (!noCard || !d.plus)
+    && (!realOnly || !notReal(d))
     && nameHas(d, query));
+}
+
+/** »Akcija«, ki ni nižja od najnižje cene v zadnjih 30 dneh (podatek objavi Mercator). */
+export const notReal = d => d.l30 > 0 && d.p >= d.l30 - 0.005;
+
+const fmtD = iso => { const [, m, dd] = iso.split('-'); return `${+dd}. ${+m}.`; };
+/** Kratke opombe iz zgodovine cen za vrstico akcije. */
+export function historyNotes(d) {
+  const out = [];
+  if (notReal(d)) out.push(`v 30 dneh je bilo že ${d.l30 < d.p ? 'ceneje' : 'enako'} (${eur(d.l30)} €)`);
+  else if (d.lo) out.push(`najceneje doslej ${eur(d.lo)} €${d.lod ? ` (${fmtD(d.lod)})` : ''}`);
+  if (d.cy) out.push(`v akciji ~vsakih ${d.cy} dni`);
+  return out;
 }
 
 /** Iskanje in filtri za seznam vseh akcij. */
