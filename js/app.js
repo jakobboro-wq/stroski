@@ -11,6 +11,7 @@ import { renderAssets } from './views/assets.js';
 import { renderDeals } from './views/deals.js';
 import { renderPantry } from './views/pantry.js';
 import { renderShoplist } from './views/shoplist.js';
+import { renderCatalog } from './views/catalog.js';
 import { renderStatistics } from './views/statistics.js';
 import { lastShopTab } from './views/shop-nav.js';
 
@@ -23,6 +24,7 @@ const routes = {
   zaloga: renderPantry,
   seznam: renderShoplist,
   akcije: renderDeals,
+  izdelki: renderCatalog,
   uvoz: renderImport,
   nastavitve: renderSettings,
 };
@@ -35,7 +37,7 @@ function render() {
   // »Nakupi« v meniju odpre zadnji podzavihek (Shramba ali Akcije).
   if (path === 'nakupi') { location.replace(`#/${lastShopTab()}`); return; }
   const name = routes[path] ? path : 'pregled';
-  const navName = { zaloga: 'nakupi', akcije: 'nakupi', seznam: 'nakupi', statistika: 'pregled' }[name] ?? name;
+  const navName = { zaloga: 'nakupi', akcije: 'nakupi', seznam: 'nakupi', izdelki: 'nakupi', statistika: 'pregled' }[name] ?? name;
   document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('active', a.dataset.route === navName));
   document.getElementById('gearBtn')?.classList.toggle('active', name === 'nastavitve');
   hideTip();

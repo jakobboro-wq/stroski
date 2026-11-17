@@ -1,6 +1,7 @@
 // Zgodovina cen akcij: dnevni posnetki na veji »cene« in iz njih statistika (cikli akcij, najnižje cene).
 // Zaženi: node scraper/history.mjs <mapa-veje-cene> <deals.json>
 //   - doda posnetek današnjih akcij (days/YYYY-MM-DD.json) in posodobi products.json,
+//   - zapiše index.json (vsi izdelki z najnižjo, običajno in redno ceno; za knjižnico izdelkov),
 //   - izračuna stats.json (izdelki z vsaj dvema obdobjema akcij: cikel, naslednja akcija),
 //   - deals.json dopolni z zgodovino (lo, lod, ep, cy), da jo aplikacija vidi brez dodatnega nalaganja.
 //
@@ -36,7 +37,8 @@ export function snapshot(deals) {
     // Isti izdelek dvakrat (npr. dva razdelka): obdrži nižjo ceno.
     if (items[id] && items[id][0] <= d.p) continue;
     items[id] = [d.p, d.o ?? 0, d.d ?? 0, d.l30 ?? 0];
-    products[id] = { s: d.s, n: d.n, g: d.g ?? null, uu: d.uu ?? null };
+    // k: velikost pakiranja v kg ali l (iz cene na enoto), za primerjavo različnih pakiranj.
+    products[id] = { s: d.s, n: d.n, g: d.g ?? null, uu: d.uu ?? null, k: d.up > 0 ? Math.round((d.p / d.up) * 1000) / 1000 : null };
   }
   return { items, products };
 }
@@ -119,6 +121,26 @@ export function buildStats(dayMap, products, today) {
   };
 }
 
+/**
+ * index.json: vsi izdelki iz okna (tudi z enim samim obdobjem), za knjižnico izdelkov v aplikaciji.
+ * Vrstica: [s, n, k, uu, lo, lod, typ, reg, last, end, lp, ep, cy, next] (lp = cena v zadnjem obdobju, end = zadnji dan akcije).
+ */
+export function buildIndex(dayMap, products, today) {
+  const rows = [];
+  for (const [id, list] of episodes(dayMap)) {
+    const pr = products[id];
+    if (!pr) continue;
+    const st = statsOf(list, today);
+    const last = list.at(-1);
+    rows.push([pr.s, pr.n, pr.k ?? null, pr.uu ?? null, st.lo, st.lod, st.typ, st.reg, st.last, last.end, last.min, st.ep, st.cy, st.next]);
+  }
+  const dates = Object.keys(dayMap).sort();
+  return {
+    updatedAt: new Date().toISOString(), since: dates[0] ?? null, days: dates.length,
+    cols: ['s', 'n', 'k', 'uu', 'lo', 'lod', 'typ', 'reg', 'last', 'end', 'lp', 'ep', 'cy', 'next'], rows,
+  };
+}
+
 async function readJson(file, fallback) {
   try { return JSON.parse(await readFile(file, 'utf8')); } catch { return fallback; }
 }
@@ -149,6 +171,7 @@ async function main() {
   const { dayMap, products } = await addDay(dir, date, data.deals);
   const { byId, json } = buildStats(dayMap, products, date);
   await writeFile(path.join(dir, 'stats.json'), JSON.stringify(json));
+  await writeFile(path.join(dir, 'index.json'), JSON.stringify(buildIndex(dayMap, products, date)));
   // Samo današnji zagon dopolni deals.json (zgodovinski uvoz ga pusti pri miru).
   if (!dateArg) await writeFile(dealsFile, JSON.stringify({ ...data, history: { since: json.since, days: json.days }, deals: annotate(data.deals, byId) }));
   console.log(`cene ${date}: ${Object.keys(dayMap[date] ?? {}).length} izdelkov, ${json.days} dni, ${json.rows.length} s ciklom`);

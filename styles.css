@@ -881,3 +881,36 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .ticker-hit { display: block; width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
 .ticker-hit span { color: var(--ink-2); }
 .quote-line .bad { color: var(--bad); }
+
+/* Nakupi → Izdelki (knjižnica izdelkov) */
+.cat-list { display: grid; gap: 2px; margin-top: 12px; }
+.cat-item { display: grid; gap: 2px; padding: 10px 8px; border-radius: 10px; color: inherit; text-decoration: none; }
+.cat-item:hover, .cat-item:focus-visible { background: var(--surface-2); }
+.cat-name { font-weight: 600; }
+.cat-search { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.cat-search .card-head { margin-bottom: 4px; }
+.cat-h { margin: 16px 0 4px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.cat-offer { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.cat-offer-main { min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
+.cat-offer-main a { color: inherit; }
+.cat-offer-price { display: grid; justify-items: end; font-size: 15px; white-space: nowrap; }
+.cat-offer-price small { color: var(--muted); font-size: 11px; }
+.cat-offer.later, .cat-offer.no { opacity: 0.6; }
+.cat-ok { display: flex; gap: 4px; }
+.cat-ok .btn { min-width: 34px; padding-inline: 8px; }
+.cat-undo { border: 0; background: none; cursor: pointer; padding: 4px; white-space: nowrap; }
+.cat-hero { display: grid; gap: 2px; margin-bottom: 12px; }
+.cat-hero-price { font-size: 30px; font-weight: 700; line-height: 1.1; }
+.cat-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.cat-stores { display: flex; flex-wrap: wrap; gap: 6px; }
+.cat-store { padding: 4px 10px; border-radius: 999px; background: var(--surface-2); font-size: 13px; }
+.cat-store.best { background: var(--accent-soft); }
+.cat-store small { color: var(--muted); }
+.cat-form { display: grid; gap: 12px; }
+.cat-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.cat-back { display: inline-block; margin-bottom: 8px; color: var(--accent-ink); text-decoration: none; font-size: 14px; }
+@media (max-width: 480px) {
+  .subtabs a { padding: 8px 4px; font-size: 13px; }
+  .cat-offer { grid-template-columns: 1fr auto; }
+  .cat-ok, .cat-undo { grid-column: 1 / -1; justify-self: end; }
+}

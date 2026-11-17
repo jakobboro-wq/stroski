@@ -1,4 +1,4 @@
-// Skupna glava zavihka Nakupi: podzavihka Shramba in Akcije ter gumb za slikanje računa.
+// Skupna glava zavihka Nakupi: podzavihki Shramba, Akcije, Seznam in Izdelki ter gumb za slikanje računa.
 
 import { scanReceipt } from './receipt.js';
 
@@ -7,6 +7,7 @@ export const SHOP_TABS = [
   { route: 'zaloga', label: 'Shramba', icon: '🧺' },
   { route: 'akcije', label: 'Akcije', icon: '🏷️' },
   { route: 'seznam', label: 'Seznam', icon: '📝' },
+  { route: 'izdelki', label: 'Izdelki', icon: '📚' },
 ];
 
 /** Zadnji odprti podzavihek (za gumb Nakupi v meniju). */

@@ -1,0 +1,90 @@
+// Testi knjižnice izdelkov (js/catalog.js). Izmišljene akcije in računi.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { nameMatches, newProduct, offerKey, productOffers, productSummary, referenceSize, perRef, searchCatalog, parseList, indexRows } from '../js/catalog.js';
+import { buildIndex } from '../scraper/history.mjs';
+
+const storeOf = n => (/lidl/i.test(n) ? 'lidl' : /tus/i.test(n) ? 'tus' : null);
+const today = '2026-11-17';
+const bueno = { id: 'p1', name: 'Kinder Bueno', size: '43 g', terms: ['kinder bueno', 'kind bueno'], not: ['bel', 'white'], links: {} };
+
+test('nameMatches: vsa imena, začetki besed, izključene besede', () => {
+  assert.ok(nameMatches(bueno, 'Vafelj Kinder Bueno, 3 x 43 g'));
+  assert.ok(nameMatches(bueno, 'KIND.BUENO 43G'));
+  assert.ok(!nameMatches(bueno, 'Vafelj Kinder Bueno, bel, 117 g'));
+  assert.ok(!nameMatches(bueno, 'KINDER BUENO WHITE'));
+  assert.ok(!nameMatches(bueno, 'Kinder Country'));
+});
+
+test('newProduct: ime in velikost iz iskanja', () => {
+  const p = newProduct('kinder bueno 43 g', 'x');
+  assert.deepEqual([p.name, p.size, p.terms], ['Kinder bueno', '43 g', ['kinder bueno']]);
+  assert.equal(newProduct('milka lešnik', 'y').size, '');
+});
+
+test('productOffers + productSummary: primerjava na 43 g, zgodovina, računi, zavrnitve', () => {
+  const deals = [
+    { s: 'tus', n: 'Vafelj Kinder Bueno, 3 x 43 g', p: 2.89, up: 22.4, uu: 'kg', o: 3.49, to: '2026-11-23' },
+    { s: 'lidl', n: 'Kinder Bueno 43 g', p: 0.99, to: '2026-11-20' },
+    { s: 'mercator', n: 'Kinder Bueno 43 g', p: 0.69, f: '2026-11-20' }, // šele prihodnji teden
+    { s: 'lidl', n: 'Kinder Bueno white 39 g', p: 0.5 },
+    { s: 'lidl', n: 'Staro', p: 0.1, to: '2026-11-01' },
+  ];
+  const index = indexRows({ cols: ['s', 'n', 'k', 'uu', 'lo', 'lod', 'typ', 'reg', 'last', 'end', 'lp', 'ep', 'cy', 'next'], rows: [
+    ['tus', 'Vafelj Kinder Bueno, 3 x 43 g', 0.129, 'kg', 2.49, '2026-09-01', 2.69, 3.49, '2026-11-16', '2026-11-17', 2.89, 3, 30, null],
+    ['hofer', 'Kinder Bueno 2 x 43 g', 0.086, 'kg', 1.49, '2026-10-01', 1.49, 1.99, '2026-10-01', '2026-10-07', 1.49, 2, 40, '2026-11-25'],
+  ] });
+  const purchases = [
+    { name: 'KIND.BUENO 43G', store: 'TUS d.o.o.', date: '2026-10-10', unit: 1.29, qty: 1 },
+    { name: 'KIND.BUENO 43G', store: 'TUS d.o.o.', date: '2026-11-10', unit: 1.19, qty: 1 },
+  ];
+  const offers = productOffers(bueno, { deals, index, purchases, storeOf }, today);
+  assert.deepEqual(offers.map(o => `${o.source}:${o.s}`).sort(), ['deal:lidl', 'deal:mercator', 'deal:tus', 'hist:hofer', 'mine:tus']);
+  const s = productSummary(bueno, offers, today);
+  assert.deepEqual(s.ref, { qty: 0.043, unit: 'kg' });
+  // Tuš 2,89 € za 3 × 43 g = 0,96 € za en Bueno, Lidl 0,99 €; Mercator se šele začne.
+  assert.equal(s.now.s, 'tus');
+  assert.equal(s.now.eq, 0.96);
+  // Najceneje doslej: Hofer 1,49 € za 2 × 43 g = 0,75 €
+  assert.equal(s.ever.row.s, 'hofer');
+  assert.equal(s.ever.eq, 0.75);
+  assert.equal(s.next.next, '2026-11-25');
+  const mine = s.rows.find(r => r.source === 'mine');
+  assert.equal(mine.price, 1.19);
+  assert.equal(mine.lo, 1.19);
+  assert.deepEqual(s.stores.map(r => r.s), ['tus', 'lidl']);
+
+  // Zavrnjen Tuš: najceneje zdaj je Lidl, zavrnjen se vrne samo na zahtevo.
+  const rejected = { ...bueno, links: { [offerKey('tus', 'Vafelj Kinder Bueno, 3 x 43 g')]: false } };
+  const s2 = productSummary(rejected, productOffers(rejected, { deals, index, purchases, storeOf }, today), today);
+  assert.equal(s2.now.s, 'lidl');
+  assert.ok(productOffers(rejected, { deals, index, purchases, storeOf }, today, { withRejected: true }).some(o => o.s === 'tus' && o.status === 'no'));
+});
+
+test('referenceSize in perRef', () => {
+  const offers = [{ qty: 0.1, uu: 'kg' }, { qty: 0.1, uu: 'kg' }, { qty: 0.3, uu: 'kg' }];
+  assert.deepEqual(referenceSize({ size: '' }, offers), { qty: 1, unit: 'kg' });
+  assert.deepEqual(referenceSize({ size: '0,5 l' }, offers), { qty: 0.5, unit: 'l' });
+  assert.equal(perRef(3, { qty: 0.3, uu: 'kg' }, { qty: 0.1, unit: 'kg' }), 1);
+  assert.equal(perRef(3, { qty: 0.3, uu: 'l' }, { qty: 0.1, unit: 'kg' }), null);
+  assert.equal(perRef(2, { qty: null }, { qty: 0.1, unit: 'kg' }), 2);
+});
+
+test('searchCatalog in parseList', () => {
+  const list = [bueno, { id: 'p2', name: 'Milka lešnik', terms: ['milka lesnik', 'milka hazelnut'] }];
+  assert.deepEqual(searchCatalog(list, 'bue').map(p => p.id), ['p1']);
+  assert.deepEqual(searchCatalog(list, 'hazel').map(p => p.id), ['p2']);
+  assert.deepEqual(parseList('Bel, white ,, bel'), ['bel', 'white']);
+});
+
+test('buildIndex: vsi izdelki, tudi z enim obdobjem, z zadnjo ceno in velikostjo', () => {
+  const dayMap = { '2026-11-16': { a: [2.89, 3.49, 17, 0] }, '2026-11-17': { a: [2.79, 3.49, 20, 0] } };
+  const j = buildIndex(dayMap, { a: { s: 'tus', n: 'Bueno 3 x 43 g', k: 0.129, uu: 'kg' } }, '2026-11-17');
+  const [r] = indexRows(j);
+  assert.equal(r.n, 'Bueno 3 x 43 g');
+  assert.equal(r.k, 0.129);
+  assert.equal(r.lo, 2.79);
+  assert.equal(r.lp, 2.79);
+  assert.equal(r.ep, 1);
+  assert.equal(r.end, '2026-11-17');
+});
