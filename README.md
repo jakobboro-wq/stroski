@@ -6,6 +6,8 @@ Podatki se hranijo samo v brskalniku na napravi; v tem repozitoriju je samo koda
 
 Razvoj: `node dev-server.mjs` → http://localhost:5173
 
+Ločena aplikacija **Nakupi** (`/nakupi/`): samo Shramba, Akcije, Seznam in slikanje računov, z lastno ikono in lastnim računom za sinhronizacijo.
+
 Testi: `node --test` (pred vsakim jutranjim zagonom jih požene tudi workflow).
 
 ## Nakupi: akcije, zgodovina cen

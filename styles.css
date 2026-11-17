@@ -851,3 +851,8 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .sim-opts input { width: 96px; display: inline-block; margin: 0 4px; }
 .sim-how summary { cursor: pointer; margin-top: 8px; }
 .sim-how p { margin-top: 6px; }
+
+/* ---------- Samostojna aplikacija Nakupi ---------- */
+.shop-only .app { display: block; }
+.rc-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--border); }
+.rc-row:first-child { border-top: 0; }
