@@ -8,6 +8,7 @@ import { subscriptionsCard, bindSubscriptions } from './subscriptions.js';
 
 const dayShort = iso => { const [, m, d] = iso.split('-'); return `${+d}. ${+m}.`; };
 import { columnChart } from '../charts.js';
+import { overviewTabs } from './statistics.js';
 import { loadDemo } from '../demo.js';
 import { esc, money, money0, signedMoney, monthLabel, currentMonth, todayISO, plural, TX_FORMS, showTip, hideTip, icons, toast } from '../ui.js';
 
@@ -151,6 +152,7 @@ export function renderOverview(view, params) {
       <h1>${esc(monthLabel(month))}</h1>
       ${month < now ? `<a class="icon-btn" href="#/pregled?m=${addMonths(month, 1)}" aria-label="Naslednji mesec">${icons.chevronRight}</a>` : '<span class="icon-btn disabled"></span>'}
     </header>
+    ${overviewTabs('pregled')}
 
     <section class="card hero">
       <div class="hero-label">Porabljeno ${isCurrent ? 'ta mesec' : `v mesecu ${esc(monthLabel(month, 'long').toLowerCase())}`}</div>

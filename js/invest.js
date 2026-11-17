@@ -13,9 +13,15 @@ const depositsOf = (fund, deposits, at) => deposits.filter(d => d.fundId === fun
 
 export const investedOf = (fund, deposits, at) => round2(sum(depositsOf(fund, deposits, at)));
 
-/** Vpisana vrednost z Revoluta + kasnejša vplačila; brez vpisane vrednosti kar vsota vplačil (brez ocene donosa). */
+/**
+ * Vpisana vrednost z Revoluta + kasnejša vplačila; brez vpisane vrednosti kar vsota vplačil (brez ocene donosa).
+ * Tržna vrednost po dnevnih cenah (marketValue, marketDate; sklad z oznako) ima prednost, če je novejša od vpisane.
+ */
 export function currentValue(fund, deposits, at) {
   const own = depositsOf(fund, deposits, at);
+  if (fund.marketValue != null && fund.marketDate && fund.marketDate <= at && (!fund.valueDate || fund.marketDate > fund.valueDate)) {
+    return round2(fund.marketValue + sum(own.filter(d => d.date > fund.marketDate)));
+  }
   if (fund.value == null || !fund.valueDate || fund.valueDate > at) return round2(sum(own));
   return round2(fund.value + sum(own.filter(d => d.date > fund.valueDate)));
 }

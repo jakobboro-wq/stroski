@@ -18,4 +18,6 @@ Workflow `.github/workflows/akcije.yml` vsak dan:
 2. `scraper/history.mjs` doda dnevni posnetek na vejo `cene` (`days/`, `products.json`) in izračuna `stats.json` (cikli akcij, napoved naslednje).
 3. `deals.json` (z opombami iz zgodovine) gre na vejo `akcije`.
 
+Cene delnic in skladov z oznako: funkciji `stock_chart` in `stock_search` v Supabase (`supabase/stock-quotes.sql`, enkrat zaženi v SQL Editorju). Brskalnik do Yahoo Finance ne more neposredno (CORS), oznake pa ne smejo v javni repozitorij, zato ne gre prek GitHub Actions.
+
 Aplikacija bere `akcije/deals.json` in `cene/stats.json` z raw.githubusercontent.com. Shramba, seznam in simulacija tečejo samo na napravi (`js/pantry.js`, `js/shoplist.js`, `js/simulate.js`).

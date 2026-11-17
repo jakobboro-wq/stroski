@@ -6,11 +6,12 @@ import { fanChart } from '../charts.js';
 import { DEFAULT_RATE } from '../invest.js';
 import { allFunds, investmentsToday } from './invest.js';
 import { stocksToday } from './stocks.js';
+import { investVolatility } from './quotes-sync.js';
 import { parseNumber } from '../csv.js';
 import { esc, money, money0, todayISO, monthLabel } from '../ui.js';
 
 const RUNS = 2000;
-const VOL = 0.15; // letna volatilnost naložb (predpostavka, približno za delniške sklade)
+const VOL = 0.15; // letna volatilnost naložb, ko ni cen (predpostavka, približno za delniške sklade)
 const MIN_MONTHS = 3;
 const conf = () => ({ view: 'cash', threshold: 0, start: null, ...getSetting('sim', {}) });
 
@@ -23,6 +24,9 @@ export function renderSimCard(el) {
   const investMonthly = funds.reduce((s, f) => s + (f.monthly ?? 0), 0);
   // Pričakovani donos: povprečje skladov, uteženo z mesečnim vplačilom (sicer privzeto).
   const w = funds.reduce((s, f) => s + (f.monthly || 1), 0);
+  // Nihanje iz zadnjega leta dnevnih cen naložb z oznako (povezanost delnic je upoštevana), sicer predpostavka.
+  const measured = investVolatility();
+  const vol = measured ?? VOL;
   const rate = funds.length ? funds.reduce((s, f) => s + (f.rate ?? DEFAULT_RATE) * (f.monthly || 1), 0) / w : DEFAULT_RATE;
 
   const head = `<div class="card-head"><h2>Naslednjih 12 mesecev</h2>
@@ -37,7 +41,7 @@ export function renderSimCard(el) {
     return;
   }
 
-  const r = simulate({ ...inp, invest0, investMonthly, rate, vol: VOL, runs: RUNS, threshold: c.threshold, seed: Number(today.replace(/-/g, '')) });
+  const r = simulate({ ...inp, invest0, investMonthly, rate, vol, runs: RUNS, threshold: c.threshold, seed: Number(today.replace(/-/g, '')) });
   const series = c.view === 'net' ? r.net : r.cash;
   const startValue = c.view === 'net' ? inp.cash0 + invest0 + (inp.other[0] ?? 0) - (inp.debts[0] ?? 0) : inp.cash0;
   const short = m => monthLabel(m, 'short');
@@ -61,7 +65,7 @@ export function renderSimCard(el) {
     </div>
     <details class="sim-how"><summary class="muted small">Kako je izračunano</summary>
       <p class="muted small">${RUNS} možnih potekov. Vsak mesec: stalni prihodki in stroški iz tvojih ponavljajočih predlog, spremenljivi del (hrana, izhodi, nepravilni prihodki) pa je naključno izbran eden od zadnjih ${inp.history.length} mesecev (prihodek in strošek iz istega meseca). Tekoči mesec šteje sorazmerno s preostalimi dnevi.
-      ${invest0 > 0 || investMonthly > 0 ? `Naložbe (${esc(money0(invest0))}, +${esc(money0(investMonthly))}/mesec z računa) rastejo s pričakovanim donosom ${(rate * 100).toFixed(1).replace('.', ',')} % na leto in nihanjem ${VOL * 100} % na leto (predpostavka, ne napoved trga).` : ''}
+      ${invest0 > 0 || investMonthly > 0 ? `Naložbe (${esc(money0(invest0))}, +${esc(money0(investMonthly))}/mesec z računa) rastejo s pričakovanim donosom ${(rate * 100).toFixed(1).replace('.', ',')} % na leto in nihanjem ${Math.round(vol * 100)} % na leto (${measured != null ? 'izmerjeno iz zadnjega leta cen tvojih naložb z oznako' : 'predpostavka, ker naložbe nimajo oznake'}). Pričakovani donos ostaja predpostavka: iz enega leta cen ga ni mogoče zanesljivo oceniti.` : ''}
       Stvari in dolgovi sledijo amortizaciji in odplačilu. Pas na grafu je razpon, v katerem je 8 od 10 potekov; zunaj njega je še 10 % slabših in 10 % boljših.
       ${inp.cashFromAssets ? '' : c.start == null ? 'Stanje na računih ni vpisano (v Premoženju dodaj »Denar / račun« ali ga vpiši tukaj), zato graf kaže samo spremembo od danes.' : ''}</p>
     </details>`;

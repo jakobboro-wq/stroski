@@ -7,6 +7,8 @@ Osebna aplikacija (PWA, vanilla JS) za stroške, premoženje in ure (RTC). Zavih
 - Končano (17. 11. 2026): scraper akcij (Tuš, Lidl, Hofer, Mercator, Eurospin), zgodovina cen na veji `cene`, Shramba, Seznam (optimizacija po trgovinah), simulacija 12 mesecev v Premoženju.
 - Naslednji korak: natančnost branja računov (`js/receipt.js`: `parseReceipt`, `qtyOf`, razvrščanje). Sproti prilagajam na prave račune, ki jih pošlje uporabnik (besedilo »Prebrano besedilo« ali slika).
 - Nakupi za punco (17. 11. 2026): ločeni podatki, vsak ima svoj račun in svoj trezor. Pozneje morda skupno gospodinjstvo: skupna Shramba in Seznam (nastavitvi `pantry`, `shoplist` in računi) v ločenem skupnem šifriranem prostoru s svojim geslom, ne v osebnem trezorju.
+- Statistika (17. 11. 2026): Pregled → Statistika (`js/statistics.js`, `js/views/statistics.js`).
+- Cene delnic (17. 11. 2026): delnice in skladi z oznako (ticker) dobijo ceno enkrat na dan prek Supabase funkcije `stock_chart` (`supabase/stock-quotes.sql`, Yahoo Finance; uporabnik jo mora zagnati v SQL Editorju). Oznake ne gredo v javni repozitorij. Volatilnost za simulacijo se izmeri iz zadnjega leta cen; pričakovani donos ostane predpostavka.
 - Odprto: Spar ni vključen (API rabi ključ iz njihove kode, tega ne obidemo); možnost je javni PDF »Znižani favoriti«.
 - Cikli akcij se pokažejo šele, ko je izdelek vsaj dvakrat v akciji (od ~decembra 2026).
 

@@ -856,3 +856,28 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .shop-only .app { display: block; }
 .rc-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--border); }
 .rc-row:first-child { border-top: 0; }
+
+/* ---------- Statistika ---------- */
+.chart .bar.pos { fill: var(--accent); }
+.chart .bar.neg { fill: var(--bad); }
+.month-head + .subtabs { margin-top: 0; }
+.st-cats { display: grid; }
+.st-cat { display: grid; grid-template-columns: minmax(0, 1fr) auto 84px 64px; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--border); color: var(--ink); text-decoration: none; }
+.st-cat:first-child { border-top: 0; }
+.st-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-avg { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.st-avg small { color: var(--muted); font-weight: 400; }
+.st-ch { text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; }
+.st-ch.good { color: var(--good); }
+.st-ch.bad { color: var(--bad); }
+.spark rect { fill: var(--accent-soft); }
+.spark rect.last { fill: var(--accent); }
+@media (max-width: 480px) { .st-cat { grid-template-columns: minmax(0, 1fr) 76px 56px; } .st-cat .spark { display: none; } }
+
+/* ---------- Oznake delnic ---------- */
+.ticker-row { display: flex; gap: 8px; }
+.ticker-row input { flex: 1; min-width: 0; text-transform: uppercase; }
+.ticker-results { display: grid; gap: 4px; }
+.ticker-hit { display: block; width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.ticker-hit span { color: var(--ink-2); }
+.quote-line .bad { color: var(--bad); }

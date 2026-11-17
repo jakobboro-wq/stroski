@@ -4,6 +4,8 @@ import { state, saveInvestment, deleteInvestments, linkTradeTransactions, remove
 import { position, stockValue, portfolio } from '../stocks.js';
 import { parseNumber } from '../csv.js';
 import { esc, money, signedMoney, plural, todayISO, ask, toast } from '../ui.js';
+import { tickerField, bindTickerField, normTicker } from './ticker-field.js';
+import { refreshQuotes, quoteStatus, yearChange } from './quotes-sync.js';
 
 const EPS = 1e-8;
 const round2 = n => Math.round(n * 100) / 100;
@@ -20,11 +22,30 @@ const allTrades = () => state.investments.filter(x => x.kind === 'trade');
 const tradesOf = id => allTrades().filter(t => t.stockId === id);
 
 let showAll = false;
+let listening = false;
+
+const yearLine = ticker => {
+  const ch = yearChange(ticker);
+  return ch == null ? '' : ` · 1 leto ${ch >= 0 ? '+' : '−'}${num(Math.abs(ch) * 100, 0)} %`;
+};
+
+/** Stanje samodejnih cen in gumb za osvežitev. */
+function quoteLine(stocks) {
+  if (!stocks.some(s => s.ticker) && !allFundsWithTicker()) return '';
+  return `<p class="muted small quote-line">${quoteStatus.busy ? 'Osvežujem cene …' : quoteStatus.error ? `<span class="bad">${esc(quoteStatus.error)}</span>` : 'Cene z oznako se osvežijo enkrat na dan.'}
+    <button type="button" class="link-btn" id="refreshQuotes"${quoteStatus.busy ? ' disabled' : ''}>Osveži zdaj</button></p>`;
+}
+const allFundsWithTicker = () => state.investments.some(x => x.kind === 'fund' && x.ticker);
 
 /** Vrednost vseh delnic danes (za neto premoženje). */
 export const stocksToday = () => portfolio(allStocks(), allTrades()).value;
 
 export function renderStockCard(el) {
+  if (!listening) {
+    listening = true;
+    document.addEventListener('quotes-status', () => { const card = document.getElementById('stockCard'); if (card) renderStockCard(card); });
+  }
+  refreshQuotes(); // največ enkrat na dan
   const stocks = allStocks();
   if (!stocks.length) {
     el.innerHTML = `
@@ -51,7 +72,7 @@ export function renderStockCard(el) {
       const open = pos.shares > EPS;
       const gain = value - pos.cost;
       const meta = open
-        ? `${shareCount(pos.shares)} · povprečno ${money(pos.average)} na kos${s.price != null && s.priceDate ? ` · vrednost z dne ${fmtDay(s.priceDate)}` : ''}`
+        ? `${shareCount(pos.shares)} · povprečno ${money(pos.average)} na kos${s.price != null && s.priceDate ? ` · ${s.priceAuto && s.ticker ? `${esc(s.ticker)} z dne` : 'vrednost z dne'} ${fmtDay(s.priceDate)}` : ''}${yearLine(s.ticker)}`
         : 'vse prodano';
       const side = !open
         ? `<b>${signedMoney(round2(pos.realized))}</b><small>pri prodajah</small>`
@@ -65,7 +86,8 @@ export function renderStockCard(el) {
           <span class="fund-amt">${side}</span>
         </button>`;
     }).join('')}</div>
-    <p class="muted small">Tapni delnico, da vpišeš trenutno vrednost z Revoluta. Nakupi in prodaje so med transakcijami kot prenosi, zato ne štejejo v porabo. Ena delnica lahko izgubi večino ali vso vrednost.</p>
+    ${quoteLine(stocks)}
+    <p class="muted small">Tapni delnico, da ji dodaš oznako za samodejno ceno ali vpišeš vrednost z Revoluta. Nakupi in prodaje so med transakcijami kot prenosi, zato ne štejejo v porabo. Ena delnica lahko izgubi večino ali vso vrednost.</p>
 
     <h3 class="sub-head">Nakupi in prodaje</h3>
     <div class="deposit-list">${(showAll ? list : list.slice(0, 5)).map(t => `
@@ -79,6 +101,7 @@ export function renderStockCard(el) {
     ${list.length > 5 ? `<button class="link-btn" id="toggleTrades">${showAll ? 'Pokaži manj' : `Pokaži vse (${list.length})`}</button>` : ''}`;
 
   el.querySelector('#addTrade').addEventListener('click', () => openTradeDialog());
+  el.querySelector('#refreshQuotes')?.addEventListener('click', () => refreshQuotes({ force: true }));
   el.querySelectorAll('[data-stock]').forEach(b => b.addEventListener('click', () => openStockDialog(stocks.find(s => s.id === b.dataset.stock))));
   el.querySelectorAll('[data-trade]').forEach(b => b.addEventListener('click', () => openTradeDialog(trades.find(t => t.id === b.dataset.trade))));
   el.querySelector('#toggleTrades')?.addEventListener('click', () => { showAll = !showAll; renderStockCard(el); });
@@ -139,9 +162,11 @@ function openStockDialog(stock) {
   title.textContent = stock.name;
   fields.innerHTML = `
     <label class="field">Naziv<input name="stock" value="${esc(stock.name)}" autocomplete="off"></label>
+    ${tickerField(stock.ticker)}
     ${open ? `
       <label class="field">Trenutna vrednost vseh kosov (€)<input name="value" inputmode="decimal" value="${esc(stock.price == null ? '' : num(round2(pos.shares * stock.price)))}"></label>
-      <p class="muted small">Vpiši vrednost, ki jo za te kose (${shareCount(pos.shares)}) kaže Revolut. Če jo pustiš prazno, se šteje nabavna vrednost.</p>` : ''}`;
+      <p class="muted small">Vpiši vrednost, ki jo za te kose (${shareCount(pos.shares)}) kaže Revolut. Če jo pustiš prazno, se šteje nabavna vrednost. Z oznako se vrednost posodablja sama (cena v evrih po dnevnem tečaju; Revolut lahko kaže malo drugače zaradi menjalnega tečaja in ure cene).</p>` : ''}`;
+  bindTickerField(fields, fields.querySelector('[name=stock]'));
   fields.oninput = null;
   removeBtn.hidden = false;
   dlg.showModal();
@@ -183,7 +208,9 @@ async function saveStock(f) {
   const taken = allStocks().some(s => s.id !== editing.id && s.name.toLocaleLowerCase('sl') === name.toLocaleLowerCase('sl'));
   if (taken) return toast('Delnica s tem imenom že obstaja.');
 
-  const next = { ...editing, name };
+  const ticker = normTicker(f.ticker.value);
+  const next = { ...editing, name, ticker };
+  if (!ticker) Object.assign(next, { priceAuto: false });
   if (f.value) {
     const pos = position(tradesOf(editing.id));
     const text = f.value.value.trim();
@@ -196,6 +223,7 @@ async function saveStock(f) {
   await saveInvestment(next);
   if (name !== editing.name) await linkTradeTransactions(tradesOf(next.id));
   toast('Shranjeno');
+  if (ticker && ticker !== editing.ticker) refreshQuotes({ force: true });
 }
 
 form.addEventListener('submit', e => {

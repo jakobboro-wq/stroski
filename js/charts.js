@@ -247,3 +247,153 @@ export function columnChart(el, data, { format, axisFormat, onSelect, ariaLabel 
   el._resizeObserver = new ResizeObserver(draw);
   el._resizeObserver.observe(el);
 }
+
+/** Lestvica od min do max (oba lahko negativna), z 0 med oznakami. */
+function signedScale(min, max, count = 4) {
+  const lo = Math.min(0, min), hi = Math.max(0, max);
+  const span = hi - lo || 1;
+  const raw = span / count;
+  const pow = 10 ** Math.floor(Math.log10(raw));
+  const f = raw / pow;
+  const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * pow;
+  const bottom = Math.floor(lo / step) * step;
+  const top = Math.ceil(hi / step) * step || step;
+  const ticks = [];
+  for (let v = bottom; v <= top + step / 2; v += step) ticks.push(Math.abs(v) < step / 1e6 ? 0 : v);
+  return { bottom, top, ticks };
+}
+
+/**
+ * Stolpci s predznakom (npr. prihranek po mesecih): pozitivni navzgor, negativni navzdol od osnovne črte.
+ * data: [{ key, label, tooltipLabel, value, rows?: [[ime, vrednost]] }], opts: { format, axisFormat, ariaLabel }
+ */
+export function signedColumnChart(el, data, { format, axisFormat, ariaLabel = '' }) {
+  const draw = () => {
+    const W = Math.round(el.clientWidth);
+    if (!W || W === el._drawnWidth) return;
+    el._drawnWidth = W;
+    const H = 210;
+    const m = { t: 16, r: 4, b: 28, l: 56 };
+    const iw = W - m.l - m.r, ih = H - m.t - m.b;
+    const { bottom, top, ticks } = signedScale(Math.min(...data.map(d => d.value)), Math.max(...data.map(d => d.value)));
+    const y = v => m.t + ((top - v) / (top - bottom)) * ih;
+    const band = iw / data.length;
+    const bw = Math.max(6, Math.min(24, band * 0.62));
+    const sparse = band < 40;
+    let s = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(ariaLabel)}">`;
+    for (const t of ticks) {
+      const yy = Math.round(y(t)) + 0.5;
+      s += `<line class="${t === 0 ? 'baseline' : 'grid'}" x1="${m.l}" x2="${W - m.r}" y1="${yy}" y2="${yy}"/>`;
+      s += `<text class="tick" x="${m.l - 8}" y="${yy}" text-anchor="end" dominant-baseline="middle">${esc(axisFormat(t))}</text>`;
+    }
+    const y0 = y(0);
+    data.forEach((d, i) => {
+      const cx = m.l + band * i + band / 2;
+      const h = Math.abs(y(d.value) - y0);
+      if (h > 0.5) {
+        // zaobljen konec stran od osnovne črte
+        const path = d.value >= 0 ? barPath(cx - bw / 2, y0 - h, bw, h, 4)
+          : `M${cx - bw / 2},${y0}V${y0 + h - Math.min(4, h)}A4,4 0 0 0 ${cx - bw / 2 + 4},${y0 + h}H${cx + bw / 2 - 4}A4,4 0 0 0 ${cx + bw / 2},${y0 + h - Math.min(4, h)}V${y0}Z`;
+        s += `<path class="bar ${d.value >= 0 ? 'pos' : 'neg'}" d="${path}"/>`;
+      }
+      if (!sparse || (data.length - 1 - i) % 2 === 0) s += `<text class="xlabel" x="${cx}" y="${H - 8}" text-anchor="middle">${esc(d.label)}</text>`;
+      s += `<rect class="hit" data-i="${i}" x="${m.l + band * i}" y="${m.t}" width="${band}" height="${ih + m.b}"/>`;
+    });
+    el.innerHTML = `${s}</svg>`;
+  };
+  const tipFor = e => {
+    const i = e.target.dataset?.i;
+    if (i == null) return hideTip();
+    const d = data[i];
+    showTip(`<div class="tip-title">${esc(d.tooltipLabel)}</div><div class="tip-value">${esc(format(d.value))}</div>
+      ${(d.rows ?? []).map(([k, v]) => `<div class="tip-row"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}`, e.clientX, e.clientY);
+  };
+  el.onpointermove = tipFor;
+  el.onpointerdown = tipFor;
+  el.onpointerleave = hideTip;
+  el.onclick = null;
+  el._drawnWidth = 0;
+  draw();
+  el._resizeObserver?.disconnect();
+  el._resizeObserver = new ResizeObserver(draw);
+  el._resizeObserver.observe(el);
+}
+
+/**
+ * Črte (ena ali dve seriji) z namigom in navpično črto ob prehodu. Vrednosti so lahko null (črta se tam konča).
+ * labels: [oznaka x], series: [{ name, cls: 'mid' | 'invested', values }], opts: { format, axisFormat, tooltipTitle(i), xEvery, ariaLabel }
+ */
+export function lineChart(el, labels, series, { format, axisFormat, tooltipTitle = i => labels[i], ariaLabel = '' }) {
+  const m = { t: 16, r: 64, b: 28, l: 56 };
+  const H = 220;
+  let geo = null;
+  const draw = () => {
+    const W = Math.round(el.clientWidth);
+    if (!W || W === el._drawnWidth) return;
+    el._drawnWidth = W;
+    const iw = W - m.l - m.r, ih = H - m.t - m.b;
+    const all = series.flatMap(s => s.values).filter(v => v != null);
+    const { bottom, top, ticks } = signedScale(Math.min(0, ...all), Math.max(0, ...all));
+    const n = labels.length;
+    const x = i => m.l + (n > 1 ? (i / (n - 1)) * iw : 0);
+    const y = v => m.t + ((top - v) / (top - bottom)) * ih;
+    let s = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(ariaLabel)}">`;
+    for (const t of ticks) {
+      const yy = Math.round(y(t)) + 0.5;
+      s += `<line class="${t === 0 ? 'baseline' : 'grid'}" x1="${m.l}" x2="${W - m.r}" y1="${yy}" y2="${yy}"/>`;
+      s += `<text class="tick" x="${m.l - 8}" y="${yy}" text-anchor="end" dominant-baseline="middle">${esc(axisFormat(t))}</text>`;
+    }
+    const every = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(iw / 44))));
+    labels.forEach((l, i) => { if ((n - 1 - i) % every === 0) s += `<text class="xlabel" x="${x(i).toFixed(1)}" y="${H - 8}" text-anchor="middle">${esc(l)}</text>`; });
+    const ends = [];
+    for (const se of series) {
+      let d = '', pen = false, last = null;
+      se.values.forEach((v, i) => {
+        if (v == null) { pen = false; return; }
+        d += `${pen ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`;
+        pen = true;
+        last = i;
+      });
+      if (d) s += `<path class="series ${se.cls}" d="${d}"/>`;
+      if (last != null) {
+        s += `<circle class="dot ${se.cls}" cx="${x(last)}" cy="${y(se.values[last])}" r="4"/>`;
+        ends.push({ yy: y(se.values[last]), x: x(last), v: se.values[last] });
+      }
+    }
+    // Končne oznake: druga se izpusti, če bi se prekrivala s prvo
+    ends.forEach((e, k) => {
+      if (k && ends.slice(0, k).some(o => Math.abs(o.yy - e.yy) < 16 && Math.abs(o.x - e.x) < 60)) return;
+      s += `<text class="end" x="${e.x + 8}" y="${Math.max(m.t + 6, e.yy)}" dominant-baseline="middle">${esc(axisFormat(e.v))}</text>`;
+    });
+    s += `<g class="cross" visibility="hidden"><line y1="${m.t}" y2="${m.t + ih}"/>${series.map(se => `<circle class="dot ${se.cls}" r="4"/>`).join('')}</g>`;
+    el.innerHTML = `${s}</svg>`;
+    geo = { x, y, n };
+  };
+  el.onpointermove = e => {
+    const svg = el.querySelector('svg');
+    if (!svg || !geo) return;
+    const px = e.clientX - svg.getBoundingClientRect().left;
+    const iw = el._drawnWidth - m.l - m.r;
+    const i = Math.max(0, Math.min(geo.n - 1, Math.round(((px - m.l) / iw) * (geo.n - 1))));
+    const cross = svg.querySelector('.cross');
+    cross.setAttribute('visibility', 'visible');
+    const line = cross.querySelector('line');
+    line.setAttribute('x1', geo.x(i));
+    line.setAttribute('x2', geo.x(i));
+    cross.querySelectorAll('circle').forEach((c, k) => {
+      const v = series[k].values[i];
+      c.setAttribute('visibility', v == null ? 'hidden' : 'visible');
+      if (v != null) { c.setAttribute('cx', geo.x(i)); c.setAttribute('cy', geo.y(v)); }
+    });
+    const rows = series.filter(se => se.values[i] != null).map(se => `<div class="tip-row"><span>${esc(se.name)}</span><b>${esc(format(se.values[i]))}</b></div>`).join('');
+    showTip(`<div class="tip-title">${esc(tooltipTitle(i))}</div>${rows}`, e.clientX, e.clientY);
+  };
+  el.onpointerdown = el.onpointermove;
+  el.onpointerleave = () => { hideTip(); el.querySelector('.cross')?.setAttribute('visibility', 'hidden'); };
+  el.onclick = null;
+  el._drawnWidth = 0;
+  draw();
+  el._resizeObserver?.disconnect();
+  el._resizeObserver = new ResizeObserver(draw);
+  el._resizeObserver.observe(el);
+}

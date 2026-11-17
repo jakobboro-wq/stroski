@@ -5,6 +5,8 @@ import { DEFAULT_RATE, RATE_SPREAD, investedOf, currentValue, projectionSeries, 
 import { projectionChart } from '../charts.js';
 import { parseNumber } from '../csv.js';
 import { esc, money, money0, signedMoney, monthLabel, todayISO, ask, toast } from '../ui.js';
+import { tickerField, bindTickerField, normTicker } from './ticker-field.js';
+import { refreshQuotes, yearChange } from './quotes-sync.js';
 
 const HORIZONS = [5, 10, 20, 30];
 let selected = 'all';
@@ -42,7 +44,7 @@ export function renderInvestCard(el) {
   const own = deposits.filter(d => ids.has(d.fundId)).sort((a, b) => b.date.localeCompare(a.date));
   const invested = chosen.reduce((s, f) => s + investedOf(f, deposits, today), 0);
   const value = chosen.reduce((s, f) => s + currentValue(f, deposits, today), 0);
-  const hasValue = chosen.some(f => f.value != null);
+  const hasValue = chosen.some(f => f.value != null || f.marketValue != null);
   const monthly = chosen.reduce((s, f) => s + (f.monthly ?? 0), 0);
   const thisMonth = today.slice(0, 7);
 
@@ -65,9 +67,9 @@ export function renderInvestCard(el) {
           <span class="emoji-badge">📈</span>
           <span class="tx-main">
             <span class="tx-desc">${esc(f.name)}</span>
-            <span class="tx-meta">${money0(f.monthly ?? 0)}/mesec · predpostavka ${num((f.rate ?? DEFAULT_RATE) * 100, 1)} %${f.monthly > 0 && !paid ? ' · ta mesec še ni vplačila' : ''}</span>
+            <span class="tx-meta">${money0(f.monthly ?? 0)}/mesec · predpostavka ${num((f.rate ?? DEFAULT_RATE) * 100, 1)} %${f.ticker ? ` · ${esc(f.ticker)}${yearChange(f.ticker) != null ? ` 1 leto ${yearChange(f.ticker) >= 0 ? '+' : '−'}${num(Math.abs(yearChange(f.ticker)) * 100, 0)} %` : ''}` : ''}${f.monthly > 0 && !paid ? ' · ta mesec še ni vplačila' : ''}</span>
           </span>
-          <span class="fund-amt"><b>${money(v)}</b>${f.value != null ? `<small class="${v - inv >= 0 ? 'good' : 'bad'}">${signedMoney(Math.round((v - inv) * 100) / 100)}</small>` : '<small>vloženo</small>'}</span>
+          <span class="fund-amt"><b>${money(v)}</b>${f.value != null || f.marketValue != null ? `<small class="${v - inv >= 0 ? 'good' : 'bad'}">${signedMoney(Math.round((v - inv) * 100) / 100)}</small>` : '<small>vloženo</small>'}</span>
         </button>`;
     }).join('')}</div>
     <button class="link-btn" id="addFund">+ Dodaj naložbo</button>
@@ -150,11 +152,14 @@ function openFundDialog(fund = null, preset = {}) {
       <label class="field">Predpostavljen donos (% na leto)<input name="rate" inputmode="decimal" value="${esc(num((f.rate ?? DEFAULT_RATE) * 100, 2))}"></label>
     </div>
     <p class="muted small">Donos je samo predpostavka za graf in ga lahko spremeniš. Graf pokaže tudi razpon ± 3 odstotne točke.</p>
+    ${tickerField(f.ticker)}
+    <p class="muted small">Z oznako sklada (npr. VWCE.DE) se trenutna vrednost računa sama: vsako vplačilo kupi enote po ceni tistega dne.</p>
     <div class="row2">
       <label class="field">Trenutna vrednost na Revolutu (€, neobvezno)<input name="value" inputmode="decimal" value="${esc(num(f.value))}"></label>
       <label class="field">Vrednost na dan<input type="date" name="valueDate" value="${esc(f.valueDate ?? todayISO())}"></label>
     </div>
     <p class="muted small">Brez vpisane vrednosti se šteje vsota vplačil.</p>`;
+  bindTickerField(fields, fields.querySelector('[name=name]'));
   removeBtn.hidden = !fund;
   dlg.showModal();
 }
@@ -190,8 +195,11 @@ form.addEventListener('submit', async e => {
     if (!(monthly >= 0)) return toast('Vpiši mesečni znesek.');
     if (!(rate >= 0 && rate < 1)) return toast('Preveri predpostavljen donos.');
     if (value != null && !(value >= 0)) return toast('Preveri trenutno vrednost.');
+    const ticker = normTicker(f.ticker.value);
     dlg.close();
-    await saveInvestment({ ...(editing ?? { kind: 'fund' }), name, monthly, rate, value, valueDate: value == null ? null : f.valueDate.value || todayISO() });
+    const market = ticker && ticker === editing?.ticker ? {} : { marketValue: null, marketDate: null };
+    await saveInvestment({ ...(editing ?? { kind: 'fund' }), name, monthly, rate, value, valueDate: value == null ? null : f.valueDate.value || todayISO(), ticker, ...market });
+    if (ticker && ticker !== editing?.ticker) refreshQuotes({ force: true });
   } else {
     const amount = parseNumber(f.amount.value);
     if (!(amount > 0)) return toast('Vpiši znesek vplačila.');

@@ -148,3 +148,26 @@ export async function updateVault(version, payload) {
   });
   return rows.length > 0;
 }
+
+// ---------- Cene delnic (supabase/stock-quotes.sql) ----------
+
+const missingFn = err => err.code === 'PGRST202' || err.status === 404;
+
+/** Dnevne cene za oznake (Yahoo Finance prek funkcije v bazi). */
+export async function stockChart(symbols, range = '1y') {
+  try {
+    return await request('/rest/v1/rpc/stock_chart', { method: 'POST', body: { p_symbols: symbols, p_range: range } });
+  } catch (err) {
+    if (missingFn(err)) throw fail('Funkcija za cene še ni nameščena (v Supabase zaženi supabase/stock-quotes.sql).', { name: 'NoQuotes' });
+    throw err;
+  }
+}
+
+export async function stockSearch(query) {
+  try {
+    return await request('/rest/v1/rpc/stock_search', { method: 'POST', body: { p_query: query } });
+  } catch (err) {
+    if (missingFn(err)) throw fail('Funkcija za cene še ni nameščena (v Supabase zaženi supabase/stock-quotes.sql).', { name: 'NoQuotes' });
+    throw err;
+  }
+}
