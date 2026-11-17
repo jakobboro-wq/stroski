@@ -26,7 +26,7 @@ Node (brez odvisnosti, brez builda), ES moduli v brskalniku, Supabase (šifriran
 
 ## Konvencije
 - Repo je javen: osebni podatki (`*.json`, `*.xlsx`, `*.csv`, …) so v `.gitignore`. Testi uporabljajo samo izmišljene podatke, fiksture so sintetične (ne kopije strani trgovin).
-- Ob spremembi datotek aplikacije dvigni `CACHE` v `sw.js` (zdaj `stroski-v27`) in dodaj nove datoteke v seznam `SHELL`.
+- Ob spremembi datotek aplikacije dvigni `CACHE` v `sw.js` in dodaj nove datoteke v seznam `SHELL`.
 - Nakupi (`nakupi/index.html`, `js/nakupi.js`, `js/views/shop-settings.js`) uvažajo iste module kot Stroški. Pogledi Nakupov ne smejo uvažati ničesar, kar rabi elemente samo iz glavnega `index.html` (npr. `dialog.js`, `txDialog`).
 - Logika brez DOM v `js/*.js` (testirana), prikaz v `js/views/*.js`. Nastavitve, ki naj se sinhronizirajo: `getSetting`/`saveSetting`; `localStorage` samo za stanje UI na napravi.
 - Scraper: samo javne strani ali endpointi, ki jih stran sama kliče brez prijave. Zaščit (API ključi, zavrnjeni dostopi) ne obidemo.
