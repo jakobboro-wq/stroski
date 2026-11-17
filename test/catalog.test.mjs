@@ -1,7 +1,7 @@
 // Testi knjižnice izdelkov (js/catalog.js). Izmišljene akcije in računi.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nameMatches, newProduct, offerKey, productOffers, productSummary, referenceSize, perRef, searchCatalog, parseList, indexRows } from '../js/catalog.js';
+import { nameMatches, newProduct, offerKey, productOffers, productSummary, referenceSize, perRef, searchCatalog, parseList, indexRows, variantOf, variantKey, sizeFits, searchGroups, pieceSize } from '../js/catalog.js';
 import { buildIndex } from '../scraper/history.mjs';
 
 const storeOf = n => (/lidl/i.test(n) ? 'lidl' : /tus/i.test(n) ? 'tus' : null);
@@ -87,4 +87,66 @@ test('buildIndex: vsi izdelki, tudi z enim obdobjem, z zadnjo ceno in velikostjo
   assert.equal(r.lp, 2.79);
   assert.equal(r.ep, 1);
   assert.equal(r.end, '2026-11-17');
+});
+
+test('variantOf: trgovine različno poimenujejo isti izdelek', () => {
+  const t = ['kinder bueno'];
+  assert.deepEqual(variantOf(t, 'Vafelj Kinder Bueno, 3 x 43 g'), []);
+  assert.deepEqual(variantOf(t, 'Čokolada Kinder Bueno, Kinder, 3/1'), []);
+  assert.deepEqual(variantOf(t, 'KIND.BUENO 43G'), []);
+  assert.deepEqual(variantOf(t, 'Vafelj Kinder Bueno, bel, 117 g'), ['bel']);
+  assert.deepEqual(variantOf(t, 'Čokolada Kinder Bueno White, Kinder, 3 x 39 g'), ['bel']);
+  assert.deepEqual(variantOf(['red bull'], 'Energijski napitek, brez sladkorja, Red Bull, 355 ml'), ['zero']);
+  assert.deepEqual(variantOf(['red bull'], 'Red Bull Energijska pijača (zero)'), ['zero']);
+  assert.equal(variantKey(['White']), 'bel');
+});
+
+test('sizeFits: cela števila kosov', () => {
+  const s = { qty: 0.043, unit: 'kg' };
+  assert.ok(sizeFits(s, 0.043, 'kg'));
+  assert.ok(sizeFits(s, 0.129, 'kg'));
+  assert.ok(!sizeFits(s, 0.117, 'kg'));
+  assert.ok(!sizeFits(s, 0.043, 'l'));
+  assert.ok(sizeFits(s, null, null));
+  assert.ok(sizeFits(null, 0.5, 'kg'));
+});
+
+test('samodejno: shranjen izdelek vzame samo isto različico in velikost; ročna odločitev ima prednost', () => {
+  const deals = [
+    { s: 'tus', n: 'Vafelj Kinder Bueno, 3 x 43 g', p: 2.89, up: 22.4, uu: 'kg' },
+    { s: 'mercator', n: 'Čokolada Kinder Bueno, Kinder, 3/1', p: 2.79, up: 21.63, uu: 'kg' },
+    { s: 'tus', n: 'Vafelj Kinder Bueno, bel, 117 g', p: 2.89 },
+    { s: 'tus', n: 'Koledar adventni Kinder Bueno, Xmas, 181 g', p: 7.64 },
+  ];
+  const p = { ...newProduct('kinder bueno 43 g', 'x') };
+  const got = productOffers(p, { deals }, today);
+  assert.deepEqual(got.map(o => o.s).sort(), ['mercator', 'tus']);
+  assert.ok(got.every(o => o.status === 'auto'));
+  const all = productOffers(p, { deals }, today, { withRejected: true });
+  assert.equal(all.filter(o => o.status === 'off').length, 2);
+  const forced = { ...p, links: { [offerKey('tus', 'Vafelj Kinder Bueno, bel, 117 g')]: true, [offerKey('mercator', 'Čokolada Kinder Bueno, Kinder, 3/1')]: false } };
+  assert.deepEqual(productOffers(forced, { deals }, today).map(o => `${o.s}:${o.status}`).sort(), ['tus:auto', 'tus:yes']);
+  const white = { ...p, size: '', variant: ['white'] };
+  assert.deepEqual(productOffers(white, { deals }, today).map(o => o.n), ['Vafelj Kinder Bueno, bel, 117 g']);
+});
+
+test('searchGroups: iskanje razvrsti ponudbe v izdelke', () => {
+  const deals = [
+    { s: 'tus', n: 'Vafelj Kinder Bueno, 3 x 43 g', p: 2.89, up: 22.4, uu: 'kg', to: '2026-11-23' },
+    { s: 'mercator', n: 'Čokolada Kinder Bueno, Kinder, 3/1', p: 2.79, up: 21.63, uu: 'kg', to: '2026-11-22' },
+    { s: 'tus', n: 'Vafelj Kinder Bueno, bel, 117 g', p: 2.89, up: 24.7, uu: 'kg' },
+    { s: 'mercator', n: 'Čokolada Kinder Bueno White, Kinder, 3 x 39 g', p: 2.79, up: 23.85, uu: 'kg' },
+  ];
+  const g = searchGroups('kinder bueno', { deals }, today);
+  assert.deepEqual(g.map(x => [x.title, x.count]), [['Kinder bueno', 2], ['Kinder bueno bel', 2]]);
+  assert.equal(g[0].summary.now.s, 'mercator');
+  assert.equal(g[0].product.size, '43 g'); // iz »3 x 43 g«, cene na kos
+  assert.equal(g[0].summary.now.eq, 0.93);
+  assert.equal(g[1].product.size, '39 g');
+  assert.deepEqual(g[1].product.variant, ['bel']);
+});
+
+test('pieceSize', () => {
+  assert.equal(pieceSize(['Vafelj, 3 x 43 g', 'Bueno 2x43g', 'Bueno 43 g']), '43 g');
+  assert.equal(pieceSize(['Bueno 117 g']), null);
 });

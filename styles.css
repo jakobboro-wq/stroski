@@ -914,3 +914,6 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
   .cat-offer { grid-template-columns: 1fr auto; }
   .cat-ok, .cat-undo { grid-column: 1 / -1; justify-self: end; }
 }
+.cat-group { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid var(--line); }
+.cat-group-head { display: flex; align-items: baseline; gap: 6px; }
+.cat-group-head .btn { margin-left: auto; flex: none; }
