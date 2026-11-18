@@ -9,6 +9,7 @@ import { STORE_NAMES } from '../deals.js';
 import { availableDeals } from './deals.js';
 import { shopHeader, bindShopHeader } from './shop-nav.js';
 import { esc, money, todayISO, toast, ask } from '../ui.js';
+import { pushState, enablePush, syncAlert } from './push.js';
 
 const INDEX_URL = 'https://raw.githubusercontent.com/jakobboro-wq/stroski/cene/index.json';
 const ui = { query: '', rejected: false };
@@ -53,7 +54,7 @@ function summaryLine(s) {
 function productCard(p, s) {
   return `
     <a class="cat-item" href="#/izdelki?p=${esc(p.id)}">
-      <span class="cat-name">${esc(p.name)}${p.size ? ` <span class="muted">${esc(p.size)}</span>` : ''}</span>
+      <span class="cat-name">${p.alert ? '<span title="Obvestila o akcijah">🔔</span> ' : ''}${esc(p.name)}${p.size ? ` <span class="muted">${esc(p.size)}</span>` : ''}</span>
       <span class="muted small">${summaryLine(s)}</span>
     </a>`;
 }
@@ -184,6 +185,12 @@ function renderProduct(view, product, src, today) {
       ${s.stores.length > 1 ? `<h3 class="cat-h">Po trgovinah${esc(ref)}</h3><div class="cat-stores">${s.stores.map((r, i) => `<span class="cat-store${i === 0 ? ' best' : ''}">${esc(store(r.s))} <b>${esc(money(r.eq))}</b>${r.source === 'mine' ? ' <small>(tvoj nakup)</small>' : ''}</span>`).join('')}</div>` : ''}
     </section>
 
+    <section class="card cat-alert">
+      <label class="cat-check"><input type="checkbox" id="catAlert"${product.alert ? ' checked' : ''}> <span><b>🔔 Obvesti me o akcijah</b><br><span class="muted small">Obvestilo na telefon, ko je ta izdelek v akciji ali se akcija še poceni (preverja enkrat na dan, okoli poldneva).</span></span></label>
+      ${product.alert ? `<label class="field">Samo, ko je cena${esc(ref)} največ (neobvezno)<input id="catTarget" inputmode="decimal" placeholder="npr. 0,90" value="${product.target != null ? esc(String(product.target).replace('.', ',')) : ''}"></label>
+      <div class="cat-device"><span id="pushStatus" class="muted small">Preverjam napravo …</span><button type="button" class="btn small primary" id="pushOn" hidden>Vklopi obvestila na tej napravi</button></div>` : ''}
+    </section>
+
     <section class="card">
       <div class="card-head"><h2>Ponudbe</h2><span class="muted small">prepoznano samodejno</span></div>
       ${s.rows.length ? offersList(s.rows, s, today, true) : '<p class="muted small">Ta hip ni nobene ponudbe. Preveri iskalna imena spodaj.</p>'}
@@ -205,7 +212,36 @@ function renderProduct(view, product, src, today) {
     ${historyNote()}`;
   bindShopHeader(view);
 
-  const update = changes => saveProducts(products().map(p => (p.id === product.id ? { ...p, ...changes } : p)));
+  // Izdelek z zvoncem se uskladi tudi z oblakom, da ga dnevni workflow pozna.
+  const update = async changes => {
+    const next = { ...product, ...changes };
+    await saveProducts(products().map(p => (p.id === product.id ? next : p)));
+    if (next.alert || product.alert) syncAlert(next).catch(err => toast(err.message));
+  };
+  view.querySelector('#catAlert').addEventListener('change', e => update({ alert: e.target.checked }));
+  view.querySelector('#catTarget')?.addEventListener('change', e => {
+    const v = Number(e.target.value.replace(',', '.').replace(/[^\d.]/g, ''));
+    update({ target: e.target.value.trim() && v > 0 ? v : null });
+  });
+  const status = view.querySelector('#pushStatus');
+  if (status) {
+    const btn = view.querySelector('#pushOn');
+    const show = st => {
+      status.textContent = {
+        on: '✓ Ta naprava prejema obvestila.',
+        off: 'Ta naprava še ne prejema obvestil.',
+        denied: 'Obvestila so za to aplikacijo blokirana. Dovoli jih v nastavitvah telefona ali brskalnika.',
+        install: 'Na iPhonu najprej dodaj aplikacijo na začetni zaslon (Deli → Dodaj na začetni zaslon) in jo odpri od tam.',
+        unsupported: 'Ta brskalnik ne podpira obvestil.',
+      }[st];
+      btn.hidden = st !== 'off';
+    };
+    pushState().then(show).catch(() => show('unsupported'));
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try { show(await enablePush()); syncAlert({ ...product, alert: true }).catch(() => {}); } catch (err) { toast(err.message); } finally { btn.disabled = false; }
+    });
+  }
   view.querySelectorAll('[data-link]').forEach(b => b.addEventListener('click', () => {
     const links = { ...product.links };
     if (b.dataset.v === '') delete links[b.dataset.link];
@@ -224,6 +260,7 @@ function renderProduct(view, product, src, today) {
   view.querySelector('#catDelete').addEventListener('click', async () => {
     if (!(await ask(`Odstranim izdelek »${product.name}« iz knjižnice? Akcij in računov to ne spremeni.`, { yes: 'Odstrani', danger: true }))) return;
     await saveProducts(products().filter(p => p.id !== product.id));
+    if (product.alert) syncAlert({ ...product, alert: false }).catch(() => {});
     location.hash = '#/izdelki';
   });
 }

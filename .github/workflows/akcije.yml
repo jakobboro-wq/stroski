@@ -53,6 +53,13 @@ jobs:
           git add -A
           git commit -q -m "Cene $(date -u +%F)" || echo "Ni sprememb."
           git push -q origin cene
+      - name: Obvestila o akcijah
+        # Izdelki z zvoncem (Supabase) proti današnjim akcijam; brez ključev se preskoči. Dnevnik izpiše samo števila.
+        continue-on-error: true
+        env:
+          PUSH_SECRET: ${{ secrets.PUSH_SECRET }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+        run: node scraper/alerts.mjs data/deals.json
       - name: Shrani na vejo akcije
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}

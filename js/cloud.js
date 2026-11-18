@@ -171,3 +171,38 @@ export async function stockSearch(query) {
     throw err;
   }
 }
+
+// ---------- Obvestila o akcijah (supabase/deal-alerts.sql) ----------
+
+const missingTable = err => err.status === 404 || err.code === 'PGRST205' || err.code === '42P01';
+const noAlerts = () => fail('Obvestila še niso nameščena (v Supabase zaženi supabase/deal-alerts.sql).', { name: 'NoAlerts' });
+
+async function alertsRequest(path, opts) {
+  try { return await request(path, opts); } catch (err) { throw missingTable(err) ? noAlerts() : err; }
+}
+
+/** Shrani naročnino naprave (PushSubscription.toJSON()) in katero aplikacijo odpre klik. */
+export async function savePushSubscription({ endpoint, keys }, app) {
+  await alertsRequest('/rest/v1/push_subscriptions?on_conflict=endpoint', {
+    method: 'POST',
+    body: { endpoint, keys: { p256dh: keys.p256dh, auth: keys.auth }, app, user_id: session.user.id },
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+  });
+}
+
+export async function deletePushSubscription(endpoint) {
+  await alertsRequest(`/rest/v1/push_subscriptions?endpoint=eq.${encodeURIComponent(endpoint)}`, { method: 'DELETE' });
+}
+
+/** Izdelek z zvoncem (samo podatki za prepoznavanje, brez cen in računov). */
+export async function saveDealAlert(productId, product) {
+  await alertsRequest('/rest/v1/deal_alerts?on_conflict=user_id,product_id', {
+    method: 'POST',
+    body: { user_id: session.user.id, product_id: productId, product, updated_at: new Date().toISOString() },
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+  });
+}
+
+export async function deleteDealAlert(productId) {
+  await alertsRequest(`/rest/v1/deal_alerts?product_id=eq.${encodeURIComponent(productId)}`, { method: 'DELETE' });
+}

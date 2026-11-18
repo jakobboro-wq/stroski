@@ -917,3 +917,7 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .cat-group { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid var(--line); }
 .cat-group-head { display: flex; align-items: baseline; gap: 6px; }
 .cat-group-head .btn { margin-left: auto; flex: none; }
+.cat-alert { display: grid; gap: 12px; }
+.cat-check { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.cat-check input { width: 20px; height: 20px; margin-top: 2px; flex: none; }
+.cat-device { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }

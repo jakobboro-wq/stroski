@@ -17,6 +17,7 @@ Workflow `.github/workflows/akcije.yml` vsak dan:
 1. `scraper/deals.mjs` pobere akcije (Tuš, Lidl, Hofer, Mercator Online, Eurospin), doda skupino živila in ceno na kg/l (`js/products.js`). Trgovina, ki ne uspe, obdrži včerajšnje akcije.
 2. `scraper/history.mjs` doda dnevni posnetek na vejo `cene` (`days/`, `products.json`) in izračuna `stats.json` (cikli akcij, napoved naslednje) ter `index.json` (vsi izdelki z najnižjo in redno ceno, za Izdelki).
 3. `deals.json` (z opombami iz zgodovine) gre na vejo `akcije`.
+4. `scraper/alerts.mjs` pošlje obvestila (Web Push) za izdelke z zvoncem 🔔 (`supabase/deal-alerts.sql`, skrivnosti `PUSH_SECRET` in `VAPID_PRIVATE_KEY`).
 
 Cene delnic in skladov z oznako: funkciji `stock_chart` in `stock_search` v Supabase (`supabase/stock-quotes.sql`, enkrat zaženi v SQL Editorju). Brskalnik do Yahoo Finance ne more neposredno (CORS), oznake pa ne smejo v javni repozitorij, zato ne gre prek GitHub Actions.
 
