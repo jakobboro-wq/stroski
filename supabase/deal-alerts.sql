@@ -36,6 +36,7 @@ create policy "own subscriptions" on public.push_subscriptions for all to authen
 create schema if not exists private;
 revoke all on schema private from public, anon, authenticated;
 create table if not exists private.secrets (name text primary key, hash text not null);
+alter table private.secrets enable row level security; -- brez pravil: bere jo samo push_ok (security definer)
 -- Odtis ključa PUSH_SECRET (skrivnost GitHub Actions). Ključ je naključen, zato odtis ne izda ničesar.
 insert into private.secrets (name, hash) values ('push', 'c56175c12f127e571c34884a6cd3a6068d5401544f47ba4950ff39bf015305b7')
   on conflict (name) do update set hash = excluded.hash;
