@@ -61,6 +61,13 @@ export function availableDeals(today, onFresh = () => {}) {
   return mergeLeaflet(autoDeals(), hofer);
 }
 
+/** Kdaj so bile akcije osvežene in katere trgovine danes niso bile prebrane (kažejo starejše podatke). */
+export const dealsStatus = () => ({
+  updatedAt: data?.updatedAt ?? null,
+  old: Object.entries(data?.stores ?? {}).filter(([, s]) => !s.ok).map(([id, s]) => ({ id, at: s.stale ? s.at : null })),
+  failed,
+});
+
 const watchList = () => getSetting('deals', { watch: [] }).watch ?? [];
 const boughtNames = () => [
   ...state.transactions.flatMap(t => t.items?.map(i => i.name) ?? []),

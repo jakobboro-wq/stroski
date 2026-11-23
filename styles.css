@@ -921,3 +921,23 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .cat-check { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
 .cat-check input { width: 20px; height: 20px; margin-top: 2px; flex: none; }
 .cat-device { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+
+/* Moji izdelki: ena vrstica na izdelek, razvrščeno po nasvetu */
+.pi-h { margin: 18px 0 4px; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.pi-h.buy { color: var(--good); }
+.pi-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 8px; border-top: 1px solid var(--line); color: inherit; text-decoration: none; }
+.pi-row:hover, .pi-row:focus-visible { background: var(--surface-2); }
+.pi-main { display: grid; gap: 2px; min-width: 0; align-content: start; }
+.pi-name { font-weight: 600; overflow-wrap: anywhere; }
+.pi-price { display: grid; justify-items: end; align-content: start; white-space: nowrap; font-size: 13px; }
+.pi-price b { font-size: 18px; }
+.pi-price small { font-size: 12px; font-weight: 400; color: var(--muted); }
+.pi-row.buy .pi-price b, .pi-verdict.buy b { color: var(--good); }
+.pi-warn { color: var(--bad); }
+.pi-verdict { font-size: 16px; }
+.pi-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.pi-table th { text-align: left; font-size: 12px; font-weight: 500; color: var(--muted); }
+.pi-table th, .pi-table td { padding: 8px 6px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.pi-table tr.best td { font-weight: 600; background: var(--accent-soft); }
+.pi-table tr.later td { color: var(--muted); }
+#catMore > summary { cursor: pointer; font-weight: 600; }

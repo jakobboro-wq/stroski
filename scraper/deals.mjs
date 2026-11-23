@@ -184,6 +184,7 @@ const MERCATOR = 'https://mercatoronline.si';
 // Oznake popustov, ki jih stran sama uporabi za »Akcije« (akcije, gratis, Pika).
 const MERCATOR_DISCOUNTS = '1,2,3,4,5,6,10,11,15,16,18,100,103,109,113,114,115,126,101,108,110,111,104,105,106,112';
 const MERCATOR_PAGE = 100;
+const MERCATOR_MAX_PAGES = 150; // varovalka; običajno 40–70 strani
 const MERCATOR_NONFOOD = /KOZMETIK|NEGA|ČISTIL|GOSPODINJ|ŽIVAL|PAPIR|TEKSTIL|DOM\b|TEHNIK|PISARN|VRT|IGRA|ŠOL|AVTO|OBLAČIL|ZDRAVJE|HIGIEN|PRALN/;
 const PRICE_MARKERS = ['discount', 'pika_discount'];
 
@@ -238,15 +239,17 @@ export function parseMercator(json) {
 async function scrapeMercator() {
   const all = new Map();
   // »offset« je pri Mercatorju številka strani (0, 1, 2 …), ne zamik v izdelkih.
-  for (let page = 0; page < 60; page++) {
+  let total = 0;
+  for (let page = 0; page < MERCATOR_MAX_PAGES; page++) {
     const qs = new URLSearchParams({ limit: MERCATOR_PAGE, offset: page, 'filterData[discounts]': MERCATOR_DISCOUNTS });
     const json = JSON.parse(await get(`${MERCATOR}/products/browseProducts/getProducts?${qs}`, true, { 'x-requested-with': 'XMLHttpRequest', accept: 'application/json' }));
     const items = parseMercator(json);
     for (const it of items) if (!all.has(it.id)) all.set(it.id, it);
     await sleep(PAUSE_MS);
-    const total = json.products?.[0]?.total ?? 0;
+    total = json.products?.[0]?.total ?? total;
     if (!json.products?.length || (page + 1) * MERCATOR_PAGE >= total) break;
   }
+  if (total > MERCATOR_MAX_PAGES * MERCATOR_PAGE) console.log(`::warning::mercator: ${total} izdelkov, prebranih največ ${MERCATOR_MAX_PAGES * MERCATOR_PAGE}`);
   return [...all.values()].map(({ id, ...it }) => it);
 }
 

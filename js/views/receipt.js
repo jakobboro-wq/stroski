@@ -48,7 +48,9 @@ export async function scanReceipt(file) {
     }, score);
   } catch (err) {
     console.error(err);
-    body.innerHTML = `<p class="card error">${esc(err.message || 'Računa ni bilo mogoče prebrati.')}</p>`;
+    // Bralnik napake včasih vrne kot besedilo; pokaži jo, da se da ugotoviti vzrok.
+    const why = typeof err === 'string' ? err : err?.message;
+    body.innerHTML = `<p class="card error">Računa ni bilo mogoče prebrati.${why ? ` ${esc(why)}` : ''}</p>`;
     return;
   }
   if (!dlg.open) return; // zaprl si, preden je končal

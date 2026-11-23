@@ -21,9 +21,28 @@ function loadTesseract() {
   return loading;
 }
 
+/** Odpre sliko; če createImageBitmap odpove (starejši Safari), prek <img>. */
+async function decode(file) {
+  try {
+    return await createImageBitmap(file, { imageOrientation: 'from-image' });
+  } catch {
+    const url = URL.createObjectURL(file);
+    try {
+      const el = new Image();
+      el.src = url;
+      await el.decode();
+      return el;
+    } catch {
+      throw new Error('Slike ni bilo mogoče odpreti. Poskusi s fotografijo JPG ali PNG.');
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+}
+
 /** Pomanjša in posivi sliko: hitrejše branje, manj šuma. Upošteva zasuk fotografije. */
 async function prepare(file) {
-  const img = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  const img = await decode(file);
   // Velike fotografije pomanjšaj, majhne povečaj: bralnik najbolje bere srednje velike črke.
   let scale = Math.min(1, 1800 / img.width, 3200 / img.height);
   if (img.width * scale < 1400) scale = Math.min(1400 / img.width, 4000 / img.height);
@@ -32,9 +51,16 @@ async function prepare(file) {
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  ctx.filter = 'grayscale(1) contrast(1.4)';
   ctx.drawImage(img, 0, 0, w, h);
   img.close?.();
+  // Sivine in kontrast po slikovnih točkah: ctx.filter v Safariju (iPhone) pogosto ne deluje.
+  const px = ctx.getImageData(0, 0, w, h);
+  const d = px.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const g = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+    d[i] = d[i + 1] = d[i + 2] = (g - 128) * 1.4 + 128;
+  }
+  ctx.putImageData(px, 0, 0);
   return canvas;
 }
 

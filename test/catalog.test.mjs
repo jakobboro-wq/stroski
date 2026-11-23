@@ -1,7 +1,7 @@
 // Testi knjižnice izdelkov (js/catalog.js). Izmišljene akcije in računi.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nameMatches, newProduct, offerKey, productOffers, productSummary, referenceSize, perRef, searchCatalog, parseList, indexRows, variantOf, variantKey, sizeFits, searchGroups, pieceSize } from '../js/catalog.js';
+import { nameMatches, newProduct, offerKey, productOffers, productSummary, referenceSize, perRef, searchCatalog, parseList, indexRows, variantOf, variantKey, sizeFits, searchGroups, pieceSize, withPieceSize, verdict, isSeasonal } from '../js/catalog.js';
 import { buildIndex } from '../scraper/history.mjs';
 
 const storeOf = n => (/lidl/i.test(n) ? 'lidl' : /tus/i.test(n) ? 'tus' : null);
@@ -149,4 +149,34 @@ test('searchGroups: iskanje razvrsti ponudbe v izdelke', () => {
 test('pieceSize', () => {
   assert.equal(pieceSize(['Vafelj, 3 x 43 g', 'Bueno 2x43g', 'Bueno 43 g']), '43 g');
   assert.equal(pieceSize(['Bueno 117 g']), null);
+});
+
+test('white = bel tudi v iskanju, cena na kos', () => {
+  const deals = [
+    { s: 'tus', n: 'Vafelj Kinder Bueno, bel, 117 g', p: 2.89, up: 24.7, uu: 'kg' },
+    { s: 'mercator', n: 'Čokolada Bueno White, Kinder, 39 g', p: 1.19, up: 30.51, uu: 'kg' },
+  ];
+  for (const q of ['kinder bueno white', 'kinder bueno bel']) {
+    const [g] = searchGroups(q, { deals }, today);
+    assert.equal(g.count, 2);
+    assert.equal(g.product.size, '39 g');
+    assert.deepEqual([g.summary.now.s, g.summary.now.eq], ['tus', 0.96]);
+  }
+});
+
+test('verdict: kupi, počakaj, predrago, ni akcije', () => {
+  const now = eq => ({ eq }), s = (o = {}) => ({ now: null, soon: null, ever: { eq: 0.93 }, rows: [1], ...o });
+  assert.equal(verdict({}, s({ now: now(0.96) })), 'buy');
+  assert.equal(verdict({}, s({ now: now(1.19) })), 'high');
+  assert.equal(verdict({}, s({ now: now(0.96), soon: now(0.75) })), 'wait');
+  assert.equal(verdict({ target: 1.2 }, s({ now: now(1.19) })), 'buy');
+  assert.equal(verdict({ target: 0.9 }, s({ now: now(0.96), soon: now(0.95) })), 'high');
+  assert.equal(verdict({}, s()), 'none');
+  assert.equal(verdict({}, s({ rows: [], ever: null })), 'empty');
+});
+
+test('withPieceSize, isSeasonal', () => {
+  assert.equal(withPieceSize({ size: '' }, [{ n: 'Pingui 30 g', qty: 0.03, uu: 'kg' }]).size, '30 g');
+  assert.equal(withPieceSize({ size: '' }, [{ n: 'A', qty: 0.1, uu: 'kg' }, { n: 'B', qty: 0.25, uu: 'kg' }]).size, '');
+  assert.ok(isSeasonal('adve kole') && !isSeasonal('bel'));
 });

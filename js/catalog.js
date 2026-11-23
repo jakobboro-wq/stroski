@@ -23,7 +23,7 @@ export const offerKey = (store, name) => `${store}|${norm(name)}`;
 /** Ali ime ustreza izdelku (iskalnim imenom in izključenim besedam). */
 export function nameMatches(product, name) {
   const w = wordsOf(name);
-  const has = part => w.some(x => x.startsWith(part));
+  const has = part => w.some(x => x.startsWith(part) || sameWord(x, part));
   if ((product.not ?? []).some(n => words(n).length && words(n).every(has))) return false;
   return (product.terms ?? []).some(t => { const q = words(t); return q.length > 0 && q.every(has); });
 }
@@ -51,10 +51,12 @@ const SYN = Object.fromEntries(Object.entries({
 // Splošne besede: vrsta izdelka, embalaža, oznake trgovine. Ne ločijo izdelkov med seboj.
 const GENERIC = new Set(`vafelj vaflji cokolada cokoladni cokoladna cokoladica ploscica ploscice desert piskot piskoti keksi bonboni
   bombon bomboni mlecna mlecni mlecno napitek pijaca pijace gazirana gazirani osvezilna sok bonbon izdelek
-  energijski energijska energijsko namaz kremni
+  energijski energijska energijsko namaz kremni rezina rezine ferrero
   kos kosov kom pakiranje paket multipack pack x novo akcija original classic klasicni klasik okus z s in iz za the of and
   tus lidl hofer mercator eurospin spar`.split(/\s+/).filter(Boolean).map(w => SYN[w] ?? stem(w)));
 const canon = w => SYN[w] ?? stem(w);
+/** Prevod iste besede: »white« = »bel«. */
+const sameWord = (a, b) => (SYN[a] || SYN[b]) !== undefined && canon(a) === canon(b);
 
 /** Različica imena glede na iskalna imena: urejen seznam besed, ki ostanejo (prazen = osnovni izdelek). */
 export function variantOf(terms, name) {
@@ -67,7 +69,7 @@ export function variantOf(terms, name) {
   for (const w of all) {
     if (/\d/.test(w) || w.length < 2) continue;
     if (sugarFree && (w === 'brez' || w.startsWith('sladk'))) continue;
-    if (q.some(t => w.startsWith(t) || t.startsWith(w))) continue;
+    if (q.some(t => w.startsWith(t) || t.startsWith(w) || sameWord(w, t))) continue;
     const c = canon(w);
     if (GENERIC.has(c) || UNITS.has(w)) continue;
     out.add(c);
@@ -254,6 +256,40 @@ export function pieceSize(names) {
 }
 
 /**
+ * Izdelek brez vpisane velikosti dobi velikost kosa iz ponudb: »3 x 43 g« ali najmanjše pakiranje,
+ * če so vsa pakiranja njegov večkratnik. Sicer ostane brez (cena na kg ali l).
+ */
+export function withPieceSize(product, offers) {
+  if (product.size) return product;
+  const list = offers.filter(o => o.qty && o.uu);
+  if (!list.length) return product;
+  const min = list.reduce((a, o) => (o.qty < a.qty ? o : a));
+  const small = min.qty < 1 ? `${Math.round(min.qty * 1000)} ${min.uu === 'kg' ? 'g' : 'ml'}` : `${String(round2(min.qty)).replace('.', ',')} ${min.uu}`;
+  const size = [pieceSize(list.map(o => o.n)), small].find(c => c && packSize(c) && list.every(o => sizeFits(packSize(c), o.qty, o.uu)));
+  return size ? { ...product, size } : product;
+}
+
+/** Število kosov v pakiranju ponudbe (3 pri »3 x 43 g«) ali null, če velikost ni znana. */
+export const packCount = (offer, ref) => (ref && offer.qty && offer.uu === ref.unit ? Math.max(1, Math.round(offer.qty / ref.qty)) : null);
+
+const NEAR = 1.05; // do 5 % nad najnižjo znano ceno še velja za dobro ceno
+/**
+ * Kaj narediti: 'buy' (dobra cena zdaj), 'wait' (kmalu bo ceneje), 'high' (v akciji, a predrago),
+ * 'none' (ni v akciji), 'empty' (ni podatkov). Meja je product.target, brez nje najnižja znana cena.
+ */
+export function verdict(product, s) {
+  const limit = product.target ?? null;
+  const good = eq => (limit != null ? eq <= limit + 0.005 : s.ever == null || eq <= s.ever.eq * NEAR + 0.005);
+  if (s.soon && good(s.soon.eq) && (!s.now || s.soon.eq < s.now.eq * 0.95)) return 'wait';
+  if (s.now) return good(s.now.eq) ? 'buy' : 'high';
+  return s.rows.length ? 'none' : 'empty';
+}
+
+// Sezonske različice (koledarji, praznična pakiranja): v iskanju so ločene od običajnih izdelkov.
+const SEASONAL = new Set(['kole', 'adve', 'xmas', 'bozi', 'east']);
+export const isSeasonal = variant => variant.split(' ').some(v => SEASONAL.has(v));
+
+/**
  * Iskanje brez shranjenega izdelka: ponudbe, razvrščene v izdelke po različici (»Kinder Bueno«, »… bel«, »… koledar«).
  * Vrne [{ variant, words, title, product, summary, count }]: najprej osnovni izdelek, nato po številu trgovin.
  */
@@ -274,10 +310,7 @@ export function searchGroups(query, sources, today, limit = 8) {
     const fit = list.filter(o => o.fits).map(o => ({ ...o, status: 'auto' }));
     if (!fit.length) continue;
     // Velikost kosa iz »3 x 43 g«, če se ujema z vsemi pakiranji v skupini: cene so potem na kos.
-    if (!product.size) {
-      const piece = pieceSize(fit.map(o => o.n));
-      if (piece && fit.every(o => sizeFits(packSize(piece), o.qty, o.uu))) product.size = piece;
-    }
+    product.size = withPieceSize(product, fit).size;
     const summary = productSummary(product, fit, today);
     out.push({ variant: key, title: product.name, product, summary, count: new Set(fit.map(o => o.s)).size, now: fit.some(o => o.source === 'deal' && !o.upcoming) });
   }
