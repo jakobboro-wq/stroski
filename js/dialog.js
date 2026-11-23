@@ -165,13 +165,13 @@ form.addEventListener('change', e => {
 });
 f.amount.addEventListener('input', () => f.amount.setCustomValidity(''));
 document.getElementById('txClose').addEventListener('click', () => dlg.close());
-document.getElementById('scanFile').addEventListener('change', e => {
+document.querySelectorAll('.scan-file').forEach(input => input.addEventListener('change', e => {
   const file = e.target.files[0];
   e.target.value = '';
   if (!file) return;
   dlg.close();
   scanReceipt(file);
-});
+}));
 
 form.addEventListener('submit', async e => {
   e.preventDefault();

@@ -42,7 +42,7 @@ async function decode(file) {
 
 /** Pomanjša in posivi sliko: hitrejše branje, manj šuma. Upošteva zasuk fotografije. */
 async function prepare(file) {
-  const img = await decode(file);
+  const img = file instanceof HTMLCanvasElement ? file : await decode(file); // stran PDF-ja je že platno
   // Velike fotografije pomanjšaj, majhne povečaj: bralnik najbolje bere srednje velike črke.
   let scale = Math.min(1, 1800 / img.width, 3200 / img.height);
   if (img.width * scale < 1400) scale = Math.min(1400 / img.width, 4000 / img.height);

@@ -5,6 +5,7 @@ import { builtinRules, matchRule, FALLBACK_CATEGORY } from '../categorize.js';
 import { parseReceipt, receiptTransactions, itemKey, suggestItemCategory } from '../receipt.js';
 import { classify } from '../products.js';
 import { readReceipt } from '../ocr.js';
+import { isPdf, readPdfReceipt } from '../pdf.js';
 import { categoryOptions } from '../category-ui.js';
 import { parseNumber } from '../csv.js';
 import { esc, money, todayISO, toast, plural } from '../ui.js';
@@ -30,9 +31,9 @@ export async function scanReceipt(file) {
   saveBtn.disabled = true;
   body.innerHTML = `
     <div class="scan-progress">
-      <p id="scanStatus">Pripravljam sliko …</p>
+      <p id="scanStatus">Pripravljam račun …</p>
       <div class="bar"><i id="scanBar" style="width:0%"></i></div>
-      <p class="muted small">Račun se prebere kar na tvoji napravi, slika ne gre nikamor.</p>
+      <p class="muted small">Račun se prebere kar na tvoji napravi, datoteka ne gre nikamor.</p>
     </div>`;
   dlg.showModal();
   const known = memory().items ?? {};
@@ -40,12 +41,15 @@ export async function scanReceipt(file) {
   const score = text => { const p = parse(text); return p.matches ? 2 : p.items.length && p.total ? 1 : 0; };
   let text;
   try {
-    text = await readReceipt(file, (p, label) => {
+    const progress = (p, label) => {
       const bar = document.getElementById('scanBar');
       if (bar) bar.style.width = `${Math.round(p * 100)}%`;
       const status = document.getElementById('scanStatus');
       if (status) status.textContent = label;
-    }, score);
+    };
+    text = isPdf(file)
+      ? await readPdfReceipt(file, progress, (canvas, onProgress, whole) => readReceipt(canvas, onProgress, whole ? score : undefined))
+      : await readReceipt(file, progress, score);
   } catch (err) {
     console.error(err);
     // Bralnik napake včasih vrne kot besedilo; pokaži jo, da se da ugotoviti vzrok.
@@ -82,7 +86,7 @@ function render(r) {
   if (r.account && !list.includes(r.account)) list.push(r.account);
   const nothing = !r.total && !r.items.length;
   body.innerHTML = `
-    ${nothing ? '<p class="card hint">Na sliki ni bilo mogoče najti zneskov. Poskusi z bližjo, ostrejšo sliko na ravni podlagi ali vpiši sam.</p>' : ''}
+    ${nothing ? '<p class="card hint">Zneskov ni bilo mogoče najti. Pri sliki poskusi bližje in ostreje na ravni podlagi, ali vpiši sam.</p>' : ''}
     <label class="field">Trgovina<input name="store" value="${esc(r.store)}" placeholder="npr. Mercator" autocomplete="off"></label>
     <div class="row2">
       <label class="field">Datum<input type="date" name="date" value="${esc(r.date)}"></label>

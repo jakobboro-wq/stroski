@@ -19,7 +19,8 @@ export function shopHeader(active) {
   try { localStorage.setItem(LAST_KEY, active); } catch { /* ni nujno */ }
   return `
     <header class="page-head spread"><h1>Nakupi</h1>
-      <label class="btn primary">📷 Slikaj račun<input type="file" accept="image/*" capture="environment" class="shop-scan" hidden></label>
+      <span class="scan-btns"><label class="btn primary">📷 Slikaj račun<input type="file" accept="image/*" capture="environment" class="shop-scan" hidden></label>
+      <label class="btn">📄 PDF<input type="file" accept="application/pdf,.pdf" class="shop-scan" aria-label="Uvozi račun v PDF" hidden></label></span>
     </header>
     <nav class="subtabs" aria-label="Nakupi">
       ${SHOP_TABS.map(t => `<a href="#/${t.route}"${t.route === active ? ' class="on" aria-current="page"' : ''}>${t.icon} ${t.label}</a>`).join('')}
@@ -27,9 +28,9 @@ export function shopHeader(active) {
 }
 
 export function bindShopHeader(view) {
-  view.querySelector('.shop-scan')?.addEventListener('change', e => {
+  view.querySelectorAll('.shop-scan').forEach(input => input.addEventListener('change', e => {
     const file = e.target.files[0];
     e.target.value = '';
     if (file) scanReceipt(file);
-  });
+  }));
 }

@@ -58,7 +58,8 @@
         </button>
       </header>
       <div class="sheet-body">
-        <label class="btn scan-btn" id="scanBtn">📷 Slikaj račun<input type="file" accept="image/*" id="scanFile" hidden></label>
+        <div class="scan-btns" id="scanBtn"><label class="btn scan-btn">📷 Slikaj račun<input type="file" accept="image/*" class="scan-file" hidden></label>
+        <label class="btn scan-btn">📄 PDF<input type="file" accept="application/pdf,.pdf" class="scan-file" aria-label="Uvozi račun v PDF" hidden></label></div>
         <div class="seg" role="radiogroup" aria-label="Vrsta">
           <label><input type="radio" name="kind" value="expense" checked><span>Strošek</span></label>
           <label><input type="radio" name="kind" value="income"><span>Prihodek</span></label>

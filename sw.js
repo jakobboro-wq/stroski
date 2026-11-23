@@ -1,13 +1,13 @@
 // Service worker: aplikacija deluje tudi brez povezave.
 // Najprej poskusi omrežje (da dobiš novo verzijo), ob izpadu uporabi shranjeno kopijo.
 
-const CACHE = 'stroski-v34';
+const CACHE = 'stroski-v35';
 const SHELL = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/app.js', 'js/store.js', 'js/db.js', 'js/categorize.js', 'js/csv.js', 'js/xlsx.js', 'js/stats.js',
   'js/charts.js', 'js/ui.js', 'js/dialog.js', 'js/demo.js',
-  'js/category-ui.js', 'js/recurring.js', 'js/subscriptions.js', 'js/views/subscriptions.js','js/work.js', 'js/views/work.js', 'js/assets.js', 'js/views/assets.js', 'js/invest.js', 'js/views/invest.js', 'js/stocks.js', 'js/views/stocks.js', 'js/receipt.js', 'js/ocr.js', 'js/views/receipt.js', 'js/deals.js', 'js/products.js', 'js/views/deals.js', 'js/pantry.js', 'js/views/pantry.js', 'js/views/shop-nav.js', 'js/shoplist.js', 'js/views/shoplist.js', 'js/catalog.js', 'js/views/catalog.js', 'js/views/push.js', 'js/simulate.js', 'js/statistics.js', 'js/quotes.js', 'js/views/quotes-sync.js', 'js/views/ticker-field.js', 'js/views/statistics.js', 'js/views/simulation.js', 'js/hofer.js','js/config.js', 'js/crypto.js', 'js/cloud.js', 'js/merge.js', 'js/sync.js',
+  'js/category-ui.js', 'js/recurring.js', 'js/subscriptions.js', 'js/views/subscriptions.js','js/work.js', 'js/views/work.js', 'js/assets.js', 'js/views/assets.js', 'js/invest.js', 'js/views/invest.js', 'js/stocks.js', 'js/views/stocks.js', 'js/receipt.js', 'js/ocr.js', 'js/views/receipt.js', 'js/deals.js', 'js/products.js', 'js/views/deals.js', 'js/pantry.js', 'js/views/pantry.js', 'js/views/shop-nav.js', 'js/shoplist.js', 'js/views/shoplist.js', 'js/catalog.js', 'js/views/catalog.js', 'js/views/push.js', 'js/simulate.js', 'js/statistics.js', 'js/quotes.js', 'js/views/quotes-sync.js', 'js/views/ticker-field.js', 'js/views/statistics.js', 'js/views/simulation.js', 'js/hofer.js', 'js/pdf.js', 'js/config.js', 'js/crypto.js', 'js/cloud.js', 'js/merge.js', 'js/sync.js',
   'js/nakupi.js', 'js/views/shop-settings.js', 'nakupi/', 'nakupi/index.html', 'nakupi/manifest.webmanifest', 'nakupi/icon.svg', 'nakupi/icon-192.png',
   'js/views/overview.js', 'js/views/transactions.js', 'js/views/import.js', 'js/views/settings.js', 'js/views/sync-card.js',
 ];

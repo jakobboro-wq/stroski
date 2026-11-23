@@ -1,6 +1,8 @@
 // Branje Hoferjevega letaka (PDF), ki ga preneseš sam. Vse se zgodi na napravi.
 // parseLeaflet dela s položaji besedila na straneh, zato se da preizkusiti brez brskalnika.
 
+import { openPdf, pageItems } from './pdf.js';
+
 const PRICE = /^\d{1,4},\d{2}$/;
 const DATE = /^(\d{1,2})\.\s?(\d{1,2})\.$/;
 const UNIT = /\d\s?(g|kg|ml|l|cl|kos|kosov|par|m|cm)\b|^za\s/i;
@@ -117,32 +119,12 @@ export function parseLeaflet(pages, today) {
 }
 
 // ---------- V brskalniku: branje PDF-ja s pdf.js ----------
-const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build';
-const PDFJS_SRI = 'sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e';
-
-let loading = null;
-function loadPdfJs() {
-  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
-  loading ??= new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = `${PDFJS}/pdf.min.js`;
-    s.integrity = PDFJS_SRI;
-    s.crossOrigin = 'anonymous';
-    s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = `${PDFJS}/pdf.worker.min.js`; resolve(window.pdfjsLib); };
-    s.onerror = () => { loading = null; reject(new Error('Bralnika PDF ni bilo mogoče naložiti. Si povezan na internet?')); };
-    document.head.append(s);
-  });
-  return loading;
-}
-
 /** Prebere besedilo vseh strani PDF-ja. `onProgress(delež 0–1)`. */
 export async function readLeafletPdf(file, onProgress = () => {}) {
-  const pdfjs = await loadPdfJs();
-  const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  const pdf = await openPdf(file);
   const pages = [];
   for (let n = 1; n <= pdf.numPages; n++) {
-    const tc = await (await pdf.getPage(n)).getTextContent();
-    pages.push(tc.items.map(t => ({ s: t.str, x: t.transform[4], y: t.transform[5], h: t.height })));
+    pages.push(await pageItems(await pdf.getPage(n)));
     onProgress(n / pdf.numPages);
   }
   await pdf.destroy();
