@@ -1,11 +1,12 @@
-// Pregled → Statistika: prihranki po mesecih, tempo porabe, dnevi v tednu, kategorije skozi čas.
+// Pregled → Statistika: prihranki po mesecih, tempo porabe, dnevi v tednu, kategorije skozi čas,
+// fiksno/spremenljivo, velikost nakupov, prejemniki, največji izdatki, dnevi brez porabe.
 
 import { state, category, kindOf, topOf, BASE_CURRENCY } from '../store.js';
 import { buildIndex } from '../stats.js';
-import { periodMonths, monthlySavings, savingsSummary, spendPace, weekdaySpend, categoryTrends } from '../statistics.js';
+import { periodMonths, monthlySavings, savingsSummary, spendPace, weekdaySpend, categoryTrends, monthEndForecast, fixedVariable, topMerchants, purchaseSizes, largestExpenses, noSpendDays } from '../statistics.js';
 import { savings as shopSavings } from '../pantry.js';
 import { signedColumnChart, lineChart, columnChart } from '../charts.js';
-import { esc, money, money0, signedMoney, monthLabel, currentMonth, todayISO } from '../ui.js';
+import { esc, money, money0, signedMoney, monthLabel, dayLabel, currentMonth, todayISO } from '../ui.js';
 
 const PERIODS = [{ n: 6, label: '6 mesecev' }, { n: 12, label: '12 mesecev' }, { n: null, label: 'Vse' }];
 const WEEKDAYS = ['pon', 'tor', 'sre', 'čet', 'pet', 'sob', 'ned'];
@@ -15,6 +16,8 @@ const UI_KEY = 'stat-ui';
 const signed0 = v => `${v > 0 ? '+' : v < 0 ? '−' : ''}${money0(Math.abs(v))}`;
 const pct = v => `${Math.round(v * 100)} %`;
 const short = m => monthLabel(m, 'short').replace('.', '');
+const sizeLabel = r => (r.hi === Infinity ? `nad ${r.lo} €` : r.lo === 0 ? `do ${r.hi} €` : `${r.lo}–${r.hi} €`);
+const bar = share => `<span class="cat-bar"><i style="width:${Math.max(0, Math.min(100, share * 100)).toFixed(1)}%"></i></span>`;
 
 function ui() {
   try { return { period: 12, savings: 'month', ...JSON.parse(localStorage.getItem(UI_KEY) ?? '{}') }; } catch { return { period: 12, savings: 'month' }; }
@@ -69,6 +72,13 @@ export function renderStatistics(view) {
   const weekdays = weekdaySpend(state.transactions, kindOf, from, today, BASE_CURRENCY);
   const topDay = weekdays.indexOf(Math.max(...weekdays));
   const trends = categoryTrends(idx, months, topOf);
+  const forecast = monthEndForecast(pace, day);
+  const fv = fixedVariable(idx, months, month);
+  const sizes = purchaseSizes(state.transactions, kindOf, from, today, BASE_CURRENCY);
+  const small = sizes.rows[0];
+  const merchants = topMerchants(state.transactions, kindOf, from, today, { base: BASE_CURRENCY });
+  const largest = largestExpenses(state.transactions, kindOf, from, today, { base: BASE_CURRENCY });
+  const quiet = noSpendDays(state.transactions, kindOf, from, today, BASE_CURRENCY);
   const periodLabel = u.period ? `zadnjih ${done.length} zaključenih mesecev` : 'vseh zaključenih mesecev';
 
   view.innerHTML = `
@@ -104,13 +114,13 @@ export function renderStatistics(view) {
         <div class="chart" id="paceChart"></div>
         <p class="small">${usual == null
           ? 'Primerjava se pokaže, ko bo vsaj en pretekli mesec podatkov.'
-          : `Do danes ${esc(money0(nowSpent))}, običajno do ${day}. v mesecu ${esc(money0(usual))}${usual > 0 ? ` (<b class="${nowSpent > usual ? 'bad' : 'good'}">${nowSpent > usual ? '+' : '−'}${Math.round(Math.abs(nowSpent - usual) / usual * 100)} %</b>)` : ''}. Običajno = povprečje zadnjih ${pace.months.length} mesecev.`}</p>
+          : `Do danes ${esc(money0(nowSpent))}, običajno do ${day}. v mesecu ${esc(money0(usual))}${usual > 0 ? ` (<b class="${nowSpent > usual ? 'bad' : 'good'}">${nowSpent > usual ? '+' : '−'}${Math.round(Math.abs(nowSpent - usual) / usual * 100)} %</b>)` : ''}. Običajno = povprečje zadnjih ${pace.months.length} mesecev.${forecast != null ? ` Če nadaljuješ kot običajno, bo konec meseca okoli <b>${esc(money0(forecast))}</b>.` : ''}`}</p>
       </section>
 
       <section class="card">
         <h2>Po dnevih v tednu</h2>
         <div class="chart" id="wdChart"></div>
-        <p class="muted small">Povprečna poraba na dan brez ponavljajočih stroškov. Največ zapraviš ${esc(WEEKDAYS_ON[topDay])}.</p>
+        <p class="muted small">Povprečna poraba na dan brez ponavljajočih stroškov. Največ zapraviš ${esc(WEEKDAYS_ON[topDay])}.${quiet ? ` Dni brez porabe: <b>${quiet.days}</b> od ${quiet.total} (${esc(pct(quiet.days / quiet.total))}), najdaljši niz ${quiet.longest}.` : ''}</p>
       </section>
     </div>
 
@@ -127,7 +137,56 @@ export function renderStatistics(view) {
         </a>`;
       }).join('')}</div>
       <p class="muted small">Puščica primerja zadnjo tretjino obdobja s prvo. Tapni kategorijo za transakcije.</p>
-    </section>`;
+    </section>
+
+    <div class="two-col">
+      <section class="card">
+        <div class="card-head"><h2>Fiksno in spremenljivo</h2>
+          <div class="legend"><span><i class="key-line mid"></i>spremenljivo</span><span><i class="key-line invested"></i>fiksno</span></div></div>
+        <div class="chart" id="fvChart"></div>
+        <p class="small">Fiksno povprečno <b>${esc(money0(fv.fixed))}</b>/mesec${fv.share != null ? ` (${esc(pct(fv.share))} porabe)` : ''}, spremenljivo <b>${esc(money0(fv.variable))}</b>/mesec.
+          <span class="muted">${fv.fixed > 0
+            ? 'Fiksno = ponavljajoči stroški (najemnina, naročnine). Prihraniš lahko predvsem pri spremenljivem.'
+            : 'Ponavljajoči stroški še niso označeni, zato je vse šteto kot spremenljivo. Predloge za ponavljajoča plačila najdeš na <a href="#/pregled">Pregledu</a>.'}</span></p>
+      </section>
+
+      <section class="card">
+        <h2>Velikost nakupov</h2>
+        ${sizes.count ? `<div class="cat-list">${sizes.rows.map(r => `
+          <div class="cat-row"><span class="cat-main">
+            <span class="cat-top"><span class="cat-name">${esc(sizeLabel(r))} <small class="muted">· ${r.count}×</small></span><span class="cat-amt">${esc(money0(r.sum))} <small class="muted">${esc(pct(r.share))}</small></span></span>
+            ${bar(r.share)}</span></div>`).join('')}</div>
+        <p class="muted small">Brez ponavljajočih. Tipičen nakup ${esc(money(sizes.median))}.${small.count ? ` Drobni nakupi do ${small.hi} € so ${small.count}× (${esc(pct(small.count / sizes.count))} vseh) in skupaj ${esc(money0(small.sum))}.` : ''}</p>`
+        : '<p class="muted">Ni podatkov.</p>'}
+      </section>
+    </div>
+
+    <div class="two-col">
+      <section class="card">
+        <h2>Kje zapravljaš</h2>
+        ${merchants.length ? `<ol class="merchants">${merchants.map(m => {
+          const c = category(m.categoryId);
+          return `<li><a href="#/transakcije?q=${encodeURIComponent(m.name)}">
+            <span class="emoji-badge">${esc(c?.emoji ?? '')}</span>
+            <span class="tx-main"><span class="tx-desc">${esc(m.name)}</span><span class="tx-meta">${m.count}× · povprečno ${esc(money(m.perVisit))} · ${esc(pct(m.share))} porabe</span></span>
+            <span class="tx-amt">${esc(money0(m.sum))}</span>
+          </a></li>`;
+        }).join('')}</ol>` : '<p class="muted">Ni podatkov.</p>'}
+      </section>
+
+      <section class="card">
+        <h2>Največji izdatki</h2>
+        ${largest.length ? `<ol class="merchants">${largest.map(t => {
+          const c = category(t.categoryId);
+          return `<li><a href="#/transakcije?m=${esc(t.date.slice(0, 7))}&q=${encodeURIComponent(t.description ?? '')}">
+            <span class="emoji-badge">${esc(c?.emoji ?? '')}</span>
+            <span class="tx-main"><span class="tx-desc">${esc(t.description || 'Brez opisa')}</span><span class="tx-meta">${esc(dayLabel(t.date))} · ${esc(c?.name ?? '')}</span></span>
+            <span class="tx-amt">${esc(money(-t.amount))}</span>
+          </a></li>`;
+        }).join('')}</ol>
+        <p class="muted small">Posamezni nakupi brez ponavljajočih: ${esc(pct(largest.reduce((s, t) => s - t.amount, 0) / (sizes.total || 1)))} spremenljive porabe obdobja.</p>` : '<p class="muted">Ni podatkov.</p>'}
+      </section>
+    </div>`;
 
   const savData = rows.map(r => ({
     key: r.month, label: short(r.month), tooltipLabel: `${monthLabel(r.month)}${r.month === month ? ' (do danes)' : ''}`,
@@ -144,6 +203,10 @@ export function renderStatistics(view) {
     { format: money, axisFormat: money0, tooltipTitle: i => `${i + 1}. dan`, ariaLabel: 'Kumulativna poraba ta mesec v primerjavi z običajno' });
   columnChart(view.querySelector('#wdChart'), weekdays.map((v, i) => ({ key: i, label: WEEKDAYS[i], tooltipLabel: WEEKDAYS_LONG[i], value: v, selected: i === topDay })),
     { format: money, axisFormat: money0, ariaLabel: 'Povprečna poraba po dnevih v tednu' });
+
+  lineChart(view.querySelector('#fvChart'), fv.rows.map(r => short(r.month)),
+    [{ name: 'Spremenljivo', cls: 'mid', values: fv.rows.map(r => r.variable) }, { name: 'Fiksno', cls: 'invested', values: fv.rows.map(r => r.fixed) }],
+    { format: money, axisFormat: money0, tooltipTitle: i => `${monthLabel(fv.rows[i].month)}${fv.rows[i].month === month ? ' (do danes)' : ''}`, ariaLabel: 'Fiksna in spremenljiva poraba po mesecih' });
 
   view.querySelectorAll('[data-period]').forEach(b => b.addEventListener('click', () => setUi({ period: b.dataset.period === 'all' ? null : Number(b.dataset.period) }, view)));
   view.querySelectorAll('[data-sv]').forEach(b => b.addEventListener('click', () => setUi({ savings: b.dataset.sv }, view)));
